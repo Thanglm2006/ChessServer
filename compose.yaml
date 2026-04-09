@@ -1,0 +1,41 @@
+services:
+  db:
+    image: groonga/pgroonga:3.2.4-alpine-17
+    container_name: chess_db
+    environment:
+      POSTGRES_DB: chess_db
+      POSTGRES_USER: Thanglm2006
+      POSTGRES_PASSWORD: Thanglm2006
+    ports:
+      - "5432:5432"
+    volumes:
+      - data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U Thanglm2006 -d chess_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: chess_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
+
+  app:
+    build: .
+    container_name: chess_backend
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/chess_db
+      REDIS_HOST: redis
+volumes:
+  data:
