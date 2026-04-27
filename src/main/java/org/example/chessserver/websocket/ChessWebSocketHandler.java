@@ -2,6 +2,7 @@ package org.example.chessserver.websocket;
 import com.github.bhlangonijr.chesslib.Board;
 import lombok.RequiredArgsConstructor;
 import org.example.chessserver.entity.Game;
+import org.example.chessserver.entity.User;
 import org.example.chessserver.repository.GameRepository;
 import org.example.chessserver.repository.UserRepository;
 import org.example.chessserver.security.JwtUtil;
@@ -56,10 +57,32 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
 
         switch (type) {
             case "READY" -> handleReady(json.getString("gameId"), userId);
+            case "REJECT_MATCH" -> handleMatchReject(json.getString("gameId"), userId);
             case "MOVE" -> handleMove(json, userId);
             case "DRAW_OFFER" -> handleDrawOffer(json.getString("gameId"), userId);
             case "DRAW_RESPONSE" -> handleDrawResponse(json, userId);
             case "SURRENDER", "RESIGN" -> handleEndGame(json.getString("gameId"), userId, "RESIGN");
+        }
+    }
+
+    private void handleMatchReject(String gameId, int userId) throws Exception {
+        String pendingPattern = "pending:game:" + gameId + ":*";
+        Set<String> keys = redisTemplate.keys(pendingPattern);
+        if (keys != null) {
+            for (String key : keys) {
+                String[] parts = key.split(":");
+                int u1 = Integer.parseInt(parts[3]);
+                int u2 = Integer.parseInt(parts[4]);
+                
+                int opponentId = (userId == u1) ? u2 : u1;
+                
+                // Notify opponent
+                sendToUser(opponentId, new JSONObject()
+                    .put("type", "MATCH_CANCELLED")
+                    .put("reason", "Opponent rejected the match").toString());
+                
+                redisTemplate.delete(key);
+            }
         }
     }
 
@@ -135,6 +158,9 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
         if (gameId != null) {
             Map<String, String> data = gameRedisService.getGameData(gameId);
             if (data != null && !data.isEmpty()) {
+                int opponentId = Integer.parseInt(data.get("white")) == userId ? Integer.parseInt(data.get("black")) : Integer.parseInt(data.get("white"));
+                User opp = userRepository.findById(opponentId).orElse(null);
+                
                 List<String> history = gameRedisService.getHistory(gameId);
                 JSONObject msg = new JSONObject()
                         .put("type", "RECONNECT_GAME")
@@ -142,7 +168,9 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
                         .put("fen", data.get("fen"))
                         .put("side", Integer.parseInt(data.get("white")) == userId ? "WHITE" : "BLACK")
                         .put("history", history)
-                        .put("opponent", Integer.parseInt(data.get("white")) == userId ? data.get("black") : data.get("white"));
+                        .put("opponentId", opponentId)
+                        .put("opponentName", opp != null ? opp.getUsername() : "Opponent #" + opponentId)
+                        .put("opponentRating", 1200); // Simplification for now
                 sendToUser(userId, msg.toString());
             }
         }
