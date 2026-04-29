@@ -43,6 +43,7 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
             sessions.put(userId, session);
             handleReconnection(userId);
         } catch (Exception e) {
+            e.printStackTrace();
             session.close(CloseStatus.BAD_DATA.withReason("Auth Failed"));
         }
     }
