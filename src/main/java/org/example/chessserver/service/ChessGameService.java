@@ -14,13 +14,17 @@ public class ChessGameService {
 
     public String handleMoveLogic(Board board, String moveStr) {
         try {
-            Move move = new Move(moveStr, board.getSideToMove());
+            String uci = moveStr.toUpperCase();
+            System.out.println("Processing UCI move: " + uci + " for side: " + board.getSideToMove());
+            Move move = new Move(uci, board.getSideToMove());
             if (board.legalMoves().contains(move)) {
                 board.doMove(move);
                 return board.getFen();
+            } else {
+                System.out.println("Move " + uci + " is illegal in current position");
             }
         } catch (Exception e) {
-            System.err.println("Invalid move format: " + moveStr);
+            System.err.println("Move format error: " + moveStr + " -> " + e.getMessage());
         }
         return null;
     }
