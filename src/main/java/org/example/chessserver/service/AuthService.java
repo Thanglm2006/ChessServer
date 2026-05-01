@@ -14,10 +14,14 @@ import org.example.chessserver.repository.UserRepository;
 import org.example.chessserver.security.JwtUtil;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.HttpHeaders;
 import java.util.Collections;
 
 @Service
@@ -27,7 +31,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-
+    private final RefreshTokenService refreshTokenService;
     @Value("${google.client.id}")
     private String googleClientId;
 
@@ -47,17 +51,42 @@ public class AuthService {
     }
 
     public ResponseEntity<?> login(LoginRequest request) {
-        return userRepository.findByEmail(request.getEmail())
-                .map(user -> {
-                    if (passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-                        String token = jwtUtil.generateToken(user.getEmail(), user.getUserId());
-                        return ResponseEntity.ok(new TokenResponse(token));
-                    } else {
-                        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponse("Sai mật khẩu"));
-                    }
-                })
-                .orElse(ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponse("Tài khoản không tồn tại, vui lòng đăng ký!")));
+    return userRepository.findByEmail(request.getEmail())
+            .<ResponseEntity<?>>map(user -> {
+
+                if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                            .body(new MessageResponse("Sai mật khẩu"));
+                }
+
+                String accessToken = jwtUtil.generateToken(
+                        user.getEmail(),
+                        user.getUserId()
+                );
+
+                String refreshToken = refreshTokenService.createRefreshToken(
+                        user.getUserId(),
+                        user.getEmail()
+                );
+
+                ResponseCookie cookie = ResponseCookie.from("refreshToken", refreshToken)
+                        .httpOnly(true)
+                        .secure(false)
+                        .path("/")
+                        .maxAge(7 * 24 * 60 * 60)
+                        .sameSite("Lax")
+                        .build();
+
+                return ResponseEntity.ok()
+                        .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                        .body(new TokenResponse(accessToken));
+
+            })
+            .orElse(ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new MessageResponse("Tài khoản không tồn tại, vui lòng đăng ký!")));
     }
+
+
 
     public ResponseEntity<?> loginWithGoogle(GoogleLoginRequest request) {
         try {
@@ -89,8 +118,28 @@ public class AuthService {
                     return userRepository.save(newUser);
                 });
 
-                String token = jwtUtil.generateToken(user.getEmail(), user.getUserId());
-                return ResponseEntity.ok(new TokenResponse(token));
+                String accessToken = jwtUtil.generateToken(
+                        user.getEmail(),
+                        user.getUserId()
+                );
+
+                String refreshToken = refreshTokenService.createRefreshToken(
+                        user.getUserId(),
+                        user.getEmail()
+                );
+
+                ResponseCookie cookie = ResponseCookie.from("refreshToken", refreshToken)
+                        .httpOnly(true)
+                        .secure(false)
+                        .path("/")
+                        .maxAge(7 * 24 * 60 * 60)
+                        .sameSite("Lax")
+                        .build();
+
+                return ResponseEntity.ok()
+                        .header(HttpHeaders.SET_COOKIE, cookie.toString())
+                        .body(new TokenResponse(accessToken));
+
 
             } else {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponse("Invalid Google Token"));
@@ -98,5 +147,19 @@ public class AuthService {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new MessageResponse("Internal Server Error during Google Auth"));
         }
+    }
+    public ResponseEntity<?> getCurrentUser(HttpServletRequest request) {
+        String token = jwtUtil.resolveToken(request);
+        if (token == null || !jwtUtil.validateToken(token)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponse("Unauthorized"));
+        }
+
+        String email = jwtUtil.getEmailFromToken(token);
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "User not found"
+        ));
+        return ResponseEntity.ok(user);
     }
 }

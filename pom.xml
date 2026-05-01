@@ -115,6 +115,7 @@
     </dependencies>
 
     <build>
+        <finalName>app</finalName>
         <plugins>
             <plugin>
                 <groupId>io.github.deweyjose</groupId>

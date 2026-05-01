@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+
 @Component
 @RequiredArgsConstructor
 public class ChessWebSocketHandler extends TextWebSocketHandler {
@@ -34,20 +35,33 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
     private final GameRedisService gameRedisService;
     private final StringRedisTemplate redisTemplate;
     private final JwtUtil jwtUtil;
+    private final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ChessWebSocketHandler.class);
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         try {
-            String query = session.getUri().getQuery();
-            String token = query.split("token=")[1].split("&")[0];
+            String token = extractToken(session);
+
+            if (token == null) {
+                session.close(CloseStatus.BAD_DATA.withReason("Missing token"));
+                return;
+            }
+            
             int userId = jwtUtil.getClaims(token).get("userId", Integer.class);
+
             sessions.put(userId, session);
             handleReconnection(userId);
+
+        } catch (io.jsonwebtoken.ExpiredJwtException e) {
+            log.warn("JWT expired");
+            session.close(CloseStatus.POLICY_VIOLATION.withReason("TOKEN_EXPIRED"));
+
         } catch (Exception e) {
-            e.printStackTrace();
-            session.close(CloseStatus.BAD_DATA.withReason("Auth Failed"));
+            log.error("WebSocket auth failed", e);
+            session.close(CloseStatus.BAD_DATA.withReason("AUTH_FAILED"));
         }
     }
+
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
@@ -251,5 +265,16 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         sessions.values().remove(session);
+    }
+    private String extractToken(WebSocketSession session) {
+        String query = session.getUri().getQuery();
+        if (query == null) return null;
+
+        for (String param : query.split("&")) {
+            if (param.startsWith("token=")) {
+                return param.substring(6);
+            }
+        }
+        return null;
     }
 }
