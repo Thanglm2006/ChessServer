@@ -1,8 +1,9 @@
 package org.example.chessserver.websocket;
 import com.github.bhlangonijr.chesslib.Board;
 import lombok.RequiredArgsConstructor;
-import org.example.chessserver.entity.Game;
+import org.example.chessserver.entity.EloRating;
 import org.example.chessserver.entity.User;
+import org.example.chessserver.repository.EloRatingRepository;
 import org.example.chessserver.repository.GameRepository;
 import org.example.chessserver.repository.UserRepository;
 import org.example.chessserver.security.JwtUtil;
@@ -17,12 +18,8 @@ import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-
 
 @Component
 @RequiredArgsConstructor
@@ -31,6 +28,7 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
     private final Map<Integer, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final GameRepository gameRepository;
     private final UserRepository userRepository;
+    private final EloRatingRepository eloRatingRepository;
     private final ChessGameService gameService;
     private final GameRedisService gameRedisService;
     private final StringRedisTemplate redisTemplate;
@@ -41,27 +39,19 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
         try {
             String token = extractToken(session);
-
             if (token == null) {
                 session.close(CloseStatus.BAD_DATA.withReason("Missing token"));
                 return;
             }
-            
             int userId = jwtUtil.getClaims(token).get("userId", Integer.class);
-
             sessions.put(userId, session);
             handleReconnection(userId);
-
         } catch (io.jsonwebtoken.ExpiredJwtException e) {
-            log.warn("JWT expired");
             session.close(CloseStatus.POLICY_VIOLATION.withReason("TOKEN_EXPIRED"));
-
         } catch (Exception e) {
-            log.error("WebSocket auth failed", e);
             session.close(CloseStatus.BAD_DATA.withReason("AUTH_FAILED"));
         }
     }
-
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
@@ -77,6 +67,136 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
             case "DRAW_OFFER" -> handleDrawOffer(json.getString("gameId"), userId);
             case "DRAW_RESPONSE" -> handleDrawResponse(json, userId);
             case "SURRENDER", "RESIGN" -> handleEndGame(json.getString("gameId"), userId, "RESIGN");
+            case "CREATE_ROOM" -> handleCreateRoom(userId);
+            case "JOIN_ROOM" -> handleJoinRoom(json.getString("code"), userId);
+            case "CHAT_MESSAGE" -> handleChatMessage(json, userId);
+            case "REMATCH_OFFER" -> handleRematchOffer(json.getString("gameId"), userId);
+            case "REMATCH_RESPONSE" -> handleRematchResponse(json, userId);
+            case "INVITE_FRIEND" -> handleInviteFriend(json.getInt("friendId"), userId);
+            case "ACCEPT_INVITE" -> handleAcceptInvite(json.getInt("hostId"), userId);
+        }
+    }
+
+    private void handleCreateRoom(int userId) throws Exception {
+        String code = UUID.randomUUID().toString().substring(0, 6).toUpperCase();
+        gameRedisService.saveRoomCode(code, String.valueOf(userId));
+        sendToUser(userId, new JSONObject().put("type", "ROOM_CREATED").put("code", code).toString());
+    }
+
+    private void handleJoinRoom(String code, int guestId) throws Exception {
+        String hostIdStr = gameRedisService.getHostByRoomCode(code);
+        if (hostIdStr == null) {
+            sendToUser(guestId, new JSONObject().put("type", "ERROR").put("message", "Invalid room code").toString());
+            return;
+        }
+        int hostId = Integer.parseInt(hostIdStr);
+        if (hostId == guestId) return;
+
+        gameRedisService.deleteRoomCode(code);
+        String gameId = UUID.randomUUID().toString();
+        startGameDirectly(gameId, hostId, guestId);
+    }
+
+    private void handleInviteFriend(int friendId, int userId) throws Exception {
+        if (!isUserOnline(friendId)) {
+            sendToUser(userId, new JSONObject().put("type", "ERROR").put("message", "Friend is not online").toString());
+            return;
+        }
+        User u = userRepository.findById(userId).orElse(null);
+        String username = u != null ? u.getUsername() : "Player";
+        
+        // Save invite state in Redis
+        redisTemplate.opsForValue().set("invite:" + userId + ":" + friendId, "PENDING", Duration.ofMinutes(5));
+        
+        sendToUser(friendId, new JSONObject()
+            .put("type", "MATCH_INVITE")
+            .put("hostId", userId)
+            .put("hostName", username).toString());
+    }
+
+    private void handleAcceptInvite(int hostId, int guestId) throws Exception {
+        String key = "invite:" + hostId + ":" + guestId;
+        String status = redisTemplate.opsForValue().get(key);
+        if (status != null) {
+            redisTemplate.delete(key);
+            String gameId = UUID.randomUUID().toString();
+            startGameDirectly(gameId, hostId, guestId);
+        } else {
+            sendToUser(guestId, new JSONObject().put("type", "ERROR").put("message", "Invite expired or invalid").toString());
+        }
+    }
+
+    private void startGameDirectly(String gameId, int u1, int u2) {
+        String gameKey = "chess:game:" + gameId;
+        Map<String, String> data = new HashMap<>();
+        data.put("white", String.valueOf(u1));
+        data.put("black", String.valueOf(u2));
+        data.put("fen", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        redisTemplate.opsForHash().putAll(gameKey, data);
+        redisTemplate.opsForValue().set("user:current_game:" + u1, gameId, Duration.ofSeconds(7200));
+        redisTemplate.opsForValue().set("user:current_game:" + u2, gameId, Duration.ofSeconds(7200));
+        redisTemplate.expire(gameKey, Duration.ofSeconds(7200));
+        gameRedisService.initializeTimers(gameId, 600); // 10 min
+        broadcastStart(gameId, u1, u2);
+    }
+
+    private void handleChatMessage(JSONObject json, int userId) throws Exception {
+        String gameId = json.getString("gameId");
+        String text = json.getString("text");
+        Map<String, String> data = gameRedisService.getGameData(gameId);
+        if (data == null || data.isEmpty()) return;
+
+        User u = userRepository.findById(userId).orElse(null);
+        String username = u != null ? u.getUsername() : "Player";
+        
+        JSONObject msg = new JSONObject()
+            .put("type", "CHAT_MESSAGE")
+            .put("senderId", userId)
+            .put("senderName", username)
+            .put("text", text);
+        
+        gameRedisService.saveChatMessage(gameId, msg.toString());
+
+        int oppId = (userId == Integer.parseInt(data.get("white"))) ? Integer.parseInt(data.get("black")) : Integer.parseInt(data.get("white"));
+        sendToUser(oppId, msg.toString());
+    }
+
+    private void handleRematchOffer(String gameId, int userId) throws Exception {
+        Map<String, String> data = gameRedisService.getGameData(gameId);
+        int w = Integer.parseInt(data.get("white"));
+        int b = Integer.parseInt(data.get("black"));
+        int oppId = (userId == w) ? b : w;
+
+        int r1 = eloRatingRepository.findById(w).map(EloRating::getRating).orElse(1200);
+        int r2 = eloRatingRepository.findById(b).map(EloRating::getRating).orElse(1200);
+        if (Math.abs(r1 - r2) > 200) {
+            sendToUser(userId, new JSONObject().put("type", "ERROR").put("message", "Elo difference too high for rematch").toString());
+            return;
+        }
+
+        redisTemplate.opsForValue().set("rematch:" + gameId + ":" + oppId, String.valueOf(userId), Duration.ofSeconds(30));
+        sendToUser(oppId, new JSONObject().put("type", "REMATCH_OFFERED").put("gameId", gameId).toString());
+    }
+
+    private void handleRematchResponse(JSONObject json, int userId) throws Exception {
+        String gameId = json.getString("gameId");
+        boolean accepted = json.getBoolean("accepted");
+        String key = "rematch:" + gameId + ":" + userId;
+        String requesterIdStr = redisTemplate.opsForValue().get(key);
+
+        if (requesterIdStr != null) {
+            int requesterId = Integer.parseInt(requesterIdStr);
+            redisTemplate.delete(key);
+            if (accepted) {
+                Map<String, String> data = gameRedisService.getGameData(gameId);
+                int oldWhite = Integer.parseInt(data.get("white"));
+                int oldBlack = Integer.parseInt(data.get("black"));
+                gameRedisService.cleanGame(gameId, oldWhite, oldBlack);
+                String newGameId = UUID.randomUUID().toString();
+                startGameDirectly(newGameId, oldBlack, oldWhite); // switch colors
+            } else {
+                sendToUser(requesterId, new JSONObject().put("type", "REMATCH_REJECTED").toString());
+            }
         }
     }
 
@@ -88,14 +208,8 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
                 String[] parts = key.split(":");
                 int u1 = Integer.parseInt(parts[3]);
                 int u2 = Integer.parseInt(parts[4]);
-                
                 int opponentId = (userId == u1) ? u2 : u1;
-                
-                // Notify opponent
-                sendToUser(opponentId, new JSONObject()
-                    .put("type", "MATCH_CANCELLED")
-                    .put("reason", "Opponent rejected the match").toString());
-                
+                sendToUser(opponentId, new JSONObject().put("type", "MATCH_CANCELLED").put("reason", "Opponent rejected the match").toString());
                 redisTemplate.delete(key);
             }
         }
@@ -104,37 +218,18 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
     private void handleReady(String gameId, int userId) {
         String readyKey = "ready:check:" + gameId;
         redisTemplate.opsForSet().add(readyKey, String.valueOf(userId));
-
         if (redisTemplate.opsForSet().size(readyKey) == 2L) {
             String pattern = "pending:game:" + gameId + ":*";
             Set<String> keys = redisTemplate.keys(pattern);
             if (keys != null) {
                 for (String key : keys) {
-                    startGame(gameId, key);
+                    String[] parts = key.split(":");
+                    startGameDirectly(gameId, Integer.parseInt(parts[3]), Integer.parseInt(parts[4]));
                     redisTemplate.delete(key);
                 }
             }
             redisTemplate.delete(readyKey);
         }
-    }
-
-    private void startGame(String gameId, String keyInfo) {
-        String[] parts = keyInfo.split(":");
-        int u1 = Integer.parseInt(parts[3]);
-        int u2 = Integer.parseInt(parts[4]);
-
-        String gameKey = "chess:game:" + gameId;
-        Map<String, String> data = new HashMap<>();
-        data.put("white", String.valueOf(u1));
-        data.put("black", String.valueOf(u2));
-        data.put("fen", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-
-        redisTemplate.opsForHash().putAll(gameKey, data);
-        redisTemplate.opsForValue().set("user:current_game:" + u1, gameId, Duration.ofSeconds(7200));
-        redisTemplate.opsForValue().set("user:current_game:" + u2, gameId, Duration.ofSeconds(7200));
-        redisTemplate.expire(gameKey, Duration.ofSeconds(7200));
-
-        broadcastStart(gameId, u1, u2);
     }
 
     private void handleMove(JSONObject json, int userId) throws Exception {
@@ -144,23 +239,36 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
         Map<String, String> data = gameRedisService.getGameData(gameId);
         if (data == null || data.isEmpty()) return;
 
+        long now = System.currentTimeMillis();
+        long lastTime = Long.parseLong(data.getOrDefault("last_move_time", String.valueOf(now)));
+        long elapsed = (now - lastTime) / 1000;
+        
+        boolean isWhite = (userId == Integer.parseInt(data.get("white")));
+        long timeRemaining = Long.parseLong(data.get(isWhite ? "time_white" : "time_black")) - elapsed;
+        
+        if (timeRemaining <= 0) {
+            handleEndGame(gameId, userId, "TIMEOUT");
+            return;
+        }
+
         Board board = gameService.loadBoard(data.get("fen"));
         String newFen = gameService.handleMoveLogic(board, moveStr);
 
         if (newFen == null) {
-            sendToUser(userId, new JSONObject().put("type", "ERROR").put("message", "Nước đi sai luật!").toString());
+            sendToUser(userId, new JSONObject().put("type", "ERROR").put("message", "Invalid move").toString());
             return;
         }
 
+        redisTemplate.opsForHash().put("chess:game:" + gameId, isWhite ? "time_white" : "time_black", String.valueOf(timeRemaining));
+        redisTemplate.opsForHash().put("chess:game:" + gameId, "last_move_time", String.valueOf(now));
         gameRedisService.updateGameState(gameId, newFen, moveStr);
 
-        int opponentId = (userId == Integer.parseInt(data.get("white")))
-                ? Integer.parseInt(data.get("black")) : Integer.parseInt(data.get("white"));
-
+        int opponentId = isWhite ? Integer.parseInt(data.get("black")) : Integer.parseInt(data.get("white"));
         sendToUser(opponentId, new JSONObject()
                 .put("type", "OPPONENT_MOVE")
                 .put("move", moveStr)
-                .put("fen", newFen).toString());
+                .put("fen", newFen)
+                .put("timeRemaining", timeRemaining).toString());
 
         String status = gameService.getGameStatus(board);
         if (!status.equals("CONTINUE") && !status.equals("CHECK")) {
@@ -177,15 +285,25 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
                 User opp = userRepository.findById(opponentId).orElse(null);
                 
                 List<String> history = gameRedisService.getHistory(gameId);
+                List<String> chat = gameRedisService.getChatHistory(gameId);
+                
+                long now = System.currentTimeMillis();
+                long lastTime = Long.parseLong(data.getOrDefault("last_move_time", String.valueOf(now)));
+                long timeWhite = Long.parseLong(data.get("time_white"));
+                long timeBlack = Long.parseLong(data.get("time_black"));
+                
                 JSONObject msg = new JSONObject()
                         .put("type", "RECONNECT_GAME")
                         .put("gameId", gameId)
                         .put("fen", data.get("fen"))
                         .put("side", Integer.parseInt(data.get("white")) == userId ? "WHITE" : "BLACK")
                         .put("history", history)
+                        .put("chatHistory", chat)
+                        .put("timeWhite", timeWhite)
+                        .put("timeBlack", timeBlack)
                         .put("opponentId", opponentId)
                         .put("opponentName", opp != null ? opp.getUsername() : "Opponent #" + opponentId)
-                        .put("opponentRating", 1200); // Simplification for now
+                        .put("opponentRating", 1200); 
                 sendToUser(userId, msg.toString());
             }
         }
@@ -219,22 +337,25 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
         String result = "1/2-1/2";
         if (reason.equals("RESIGN") || reason.equals("SURRENDER")) {
             result = (userId == w) ? "0-1" : "1-0";
+        } else if (reason.equals("TIMEOUT")) {
+            result = (userId == w) ? "0-1" : "1-0";
         } else if (reason.equals("CHECKMATE")) {
+            result = (userId == w) ? "1-0" : "0-1"; // the user passing this usually made the checkmate move, so they win? No wait, handleMove passes it.
+            // If the person who just moved caused checkmate, they win.
             result = (userId == w) ? "1-0" : "0-1";
         }
 
-        Game game = new Game();
-        game.setWhitePlayer(userRepository.findById(w).orElse(null));
-        game.setBlackPlayer(userRepository.findById(b).orElse(null));
-        game.setResult(result);
-        game.setPgnData(pgn);
-        gameRepository.save(game);
+        gameRepository.processGameEnd(w, b, result, pgn);
 
         JSONObject endMsg = new JSONObject().put("type", "GAME_OVER").put("result", result).put("reason", reason);
         sendToUser(w, endMsg.toString());
         sendToUser(b, endMsg.toString());
-
-        gameRedisService.cleanGame(gameId, w, b);
+        
+        // We do NOT call cleanGame here yet because they might want to rematch.
+        // We wait for rematch handling or let redis expire the keys.
+        // We will remove current_game so they can start new games.
+        redisTemplate.delete("user:current_game:" + w);
+        redisTemplate.delete("user:current_game:" + b);
     }
 
     private int getUserIdBySession(WebSocketSession session) {
@@ -251,6 +372,7 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
             e.printStackTrace();
         }
     }
+
     public void sendToUser(int userId, String message) throws Exception {
         WebSocketSession session = sessions.get(userId);
         if (session != null && session.isOpen()) {
@@ -262,14 +384,15 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
         WebSocketSession session = sessions.get(userId);
         return session != null && session.isOpen();
     }
+
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
         sessions.values().remove(session);
     }
+
     private String extractToken(WebSocketSession session) {
         String query = session.getUri().getQuery();
         if (query == null) return null;
-
         for (String param : query.split("&")) {
             if (param.startsWith("token=")) {
                 return param.substring(6);

@@ -123,7 +123,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 7. VIEW: Bảng xếp hạng cập nhật thời gian thực
+-- 7. Bảng Bạn bè (Friendships)
+CREATE TABLE IF NOT EXISTS friendships (
+    user_id_1 INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    user_id_2 INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'PENDING', -- 'PENDING', 'ACCEPTED'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id_1, user_id_2)
+);
+
+-- 8. VIEW: Bảng xếp hạng cập nhật thời gian thực
 CREATE OR REPLACE VIEW leaderboard AS
 SELECT
     u.username,
