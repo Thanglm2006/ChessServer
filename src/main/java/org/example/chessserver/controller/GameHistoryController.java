@@ -21,4 +21,10 @@ public class GameHistoryController {
             @RequestParam(defaultValue = "10") int size) {
         return ResponseEntity.ok(gameHistoryService.getHistoryForUser(userId, page, size));
     }
+
+    @GetMapping("/active")
+    public ResponseEntity<String> checkActiveGame(@RequestParam int userId) {
+        String gameId = gameHistoryService.getActiveGameId(userId);
+        return gameId != null ? ResponseEntity.ok(gameId) : ResponseEntity.noContent().build();
+    }
 }

@@ -73,4 +73,18 @@ public class FriendService {
                     .build();
         }).collect(Collectors.toList());
     }
+
+    public List<FriendDto> getPendingRequests(int userId) {
+        List<Friendship> friendships = friendshipRepository.findPendingRequests(userId);
+        return friendships.stream().map(f -> {
+            User sender = f.getUser1();
+            int rating = eloRatingRepository.findById(sender.getUserId()).map(EloRating::getRating).orElse(1200);
+            return FriendDto.builder()
+                    .userId(sender.getUserId())
+                    .username(sender.getUsername())
+                    .status("PENDING")
+                    .rating(rating)
+                    .build();
+        }).collect(Collectors.toList());
+    }
 }

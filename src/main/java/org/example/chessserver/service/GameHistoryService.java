@@ -6,6 +6,7 @@ import org.example.chessserver.entity.Game;
 import org.example.chessserver.repository.GameRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -16,6 +17,11 @@ import java.util.stream.Collectors;
 public class GameHistoryService {
 
     private final GameRepository gameRepository;
+    private final StringRedisTemplate redisTemplate;
+
+    public String getActiveGameId(int userId) {
+        return redisTemplate.opsForValue().get("user:current_game:" + userId);
+    }
 
     public List<GameHistoryDto> getHistoryForUser(int userId, int page, int size) {
         Page<Game> games = gameRepository.findGamesByUserId(userId, PageRequest.of(page, size));

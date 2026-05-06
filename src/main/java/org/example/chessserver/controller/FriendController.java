@@ -20,6 +20,11 @@ public class FriendController {
         return ResponseEntity.ok(friendService.getFriendsList(userId));
     }
 
+    @GetMapping("/pending")
+    public ResponseEntity<List<FriendDto>> getPending(@RequestParam int userId) {
+        return ResponseEntity.ok(friendService.getPendingRequests(userId));
+    }
+
     @PostMapping("/request")
     public ResponseEntity<String> sendRequest(@RequestParam int senderId, @RequestParam int receiverId) {
         friendService.sendFriendRequest(senderId, receiverId);

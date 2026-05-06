@@ -6,7 +6,7 @@ This document provides instructions for the frontend implementation to interact 
 
 ### 1.1 Home API: User Profile & Stats
 **Endpoint:** `GET /api/user/me`
-* Returns the current logged-in user's stats based on the JWT token.
+* Returns the current logged-in user's profile and stats based on the JWT token.
 
 **Endpoint:** `GET /api/user/{id}/stats`
 **Response:**
@@ -42,7 +42,7 @@ This document provides instructions for the frontend implementation to interact 
 
 ### 1.3 Friend System
 **Endpoint:** `GET /api/friends/list?userId={id}`
-**Response:**
+**Response:** List of friends and their current status.
 ```json
 [
   {
@@ -53,6 +53,10 @@ This document provides instructions for the frontend implementation to interact 
   }
 ]
 ```
+
+**Endpoint:** `GET /api/friends/pending?userId={id}`
+**Response:** List of pending friend requests received by the user.
+
 **Endpoint:** `POST /api/friends/request?senderId={id}&receiverId={id}`
 **Response:** `Friend request sent` (String)
 
@@ -69,7 +73,7 @@ This document provides instructions for the frontend implementation to interact 
 ## 2. Matchmaking & Game Flow
 
 ### 2.1 Matchmaking Logic
-1. **Join Queue**: `POST /api/matchmaking/join?userId={id}`.
+1. **Join Queue**: `POST /api/matchmaking/join?userId={id}&type={matchType}`.
 2. **Find Match**: Server pairs two users.
 3. **Prepare Game**: Both users receive `PREPARE_GAME` WebSocket event.
    ```json
@@ -98,8 +102,8 @@ This document provides instructions for the frontend implementation to interact 
    }
    ```
 2. **Making a Move**:
-   `{"type": "MOVE", "gameId": "uuid", "move": "e2e4"}`
-3. **Validation**: Server validates move via `chesslib`. If invalid, sends `ERROR`.
+   `{"type": "MOVE", "gameId": "uuid", "move": "E2E4"}` (Use coordinate notation)
+3. **Validation**: Server validates move. If invalid, sends `ERROR`.
 4. **Broadcast**: Opponent receives `OPPONENT_MOVE`.
    ```json
    {
@@ -110,63 +114,46 @@ This document provides instructions for the frontend implementation to interact 
    }
    ```
 5. **End Game**: When checkmate, draw, or resignation occurs, `GAME_OVER` is sent.
-   ```json
-   {
-     "type": "GAME_OVER",
-     "result": "1-0",
-     "reason": "CHECKMATE"
-   }
-   ```
 
 ## 3. WebSocket Events
 
-All WebSocket messages are sent and received as JSON strings over `ws://<domain>/ws/chess?token=<JWT_TOKEN>`.
+All WebSocket messages are sent and received as JSON strings over `ws://<domain>/ws?token=<JWT_TOKEN>`.
 
-### 2.1 Private Rooms
+### 3.1 Presence Events
+- **User Online:** `{"type": "USER_ONLINE", "userId": 2}`
+- **User Offline:** `{"type": "USER_OFFLINE", "userId": 2}`
+- *The frontend should use these to update the status in the friends list in real-time.*
+
+### 3.2 Private Rooms
 - **To Create a Room:**
-  Send: `{"type": "CREATE_ROOM"}`
+  Send: `{"type": "CREATE_ROOM", "matchType": "rapid"}`
   Receive: `{"type": "ROOM_CREATED", "code": "A7B9"}`
-  *The frontend should display this code to the user to share.*
 - **To Join a Room:**
   Send: `{"type": "JOIN_ROOM", "code": "A7B9"}`
-  Receive: If successful, you will receive `{"type": "GAME_START", "side": "BLACK", ...}`. If error, `{"type": "ERROR", "message": "..."}`.
 
-### 2.2 Direct Friend Invitation
+### 3.3 Direct Friend Invitation
 - **To Invite an Online Friend:**
-  Send: `{"type": "INVITE_FRIEND", "friendId": 2}`
+  Send: `{"type": "INVITE_FRIEND", "friendId": 2, "matchType": "rapid"}`
 - **Receiving an Invitation:**
   The friend will receive: `{"type": "MATCH_INVITE", "hostId": 1, "hostName": "thanglm"}`
 - **To Accept Invitation:**
   Send: `{"type": "ACCEPT_INVITE", "hostId": 1}`
-  *If successful, the server will start the match and broadcast `GAME_START`.*
 
-### 2.3 Rematch
+### 3.4 Rematch
 - **To Offer Rematch:**
   Send: `{"type": "REMATCH_OFFER", "gameId": "<uuid>"}`
 - **Receiving Rematch Offer:**
   You will receive: `{"type": "REMATCH_OFFERED", "gameId": "<uuid>"}`
 - **To Accept/Reject Rematch:**
   Send: `{"type": "REMATCH_RESPONSE", "gameId": "<uuid>", "accepted": true}`
-  *If accepted, the server will switch colors and send a `GAME_START` event.*
 
-### 2.3 In-Game Chat
+### 3.5 In-Game Chat
 - **To Send Message:**
   Send: `{"type": "CHAT_MESSAGE", "gameId": "<uuid>", "text": "Hello!"}`
 - **To Receive Message:**
   Listen for: `{"type": "CHAT_MESSAGE", "senderId": 1, "senderName": "thanglm", "text": "Hello!"}`
 
-### 2.4 Timers
-- Every `OPPONENT_MOVE` event will now include the opponent's `timeRemaining` (in seconds).
-- The `RECONNECT_GAME` event will include `timeWhite` and `timeBlack` in seconds.
-- The frontend should implement a local countdown timer that synchronizes with these remaining times after every turn.
-
-## 3. General Frontend Recommendations
-- Implement a countdown clock locally. Decrease the current player's time by 1 every second.
-- On reconnection, restore chat history using the `chatHistory` array provided in the `RECONNECT_GAME` payload.
-
-### 3.2 Game Replay (History)
-- **Logic Location**: The **Frontend** should handle the replay logic.
-- **Workflow**:
-  1. Fetch the `pgn` string using the `GET /api/game/history` endpoint.
-  2. Load the PGN into a local chess engine instance (e.g., `chess.js` for Web or `chesslib` for Android/Java).
-  3. The user can then navigate the move list locally without any further server calls. This ensures a fast, responsive experience when scrubbing through old games.
+### 3.6 Timers
+- Every `OPPONENT_MOVE` event includes the opponent's `timeRemaining` (in seconds).
+- The `RECONNECT_GAME` event includes `timeWhite` and `timeBlack`.
+- The frontend should implement local countdown timers synchronized with these values.
