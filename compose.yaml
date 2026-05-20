@@ -38,7 +38,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "8087:8080"
+      - "8087:8087"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
