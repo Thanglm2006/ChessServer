@@ -32,24 +32,16 @@ services:
   app:
     build: .
     container_name: chess_backend
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    ports:
-      - "8087:8087"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    network_mode: "host"
     environment:
-      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://db:5432/chess_db}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://localhost:5473/chess_db}
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-Thanglm2006}
       SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-Thanglm2006}
 
-      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-redis}
+      SPRING_DATA_REDIS_HOST: ${SPRING_DATA_REDIS_HOST:-localhost}
       SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
 
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-599331175768-2rk7fdpri16ncb3iu3sbful0hslehdq7.apps.googleusercontent.com}
-      AI_API_URL: http://host.docker.internal:3210/api
+      AI_API_URL: http://localhost:3210/api
 volumes:
   data:
