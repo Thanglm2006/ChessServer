@@ -3,10 +3,11 @@ package org.example.chessserver.repository;
 import org.example.chessserver.entity.Friendship;
 import org.example.chessserver.entity.FriendshipId;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-
+import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Repository
@@ -16,6 +17,12 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Friendsh
 
     @Query("SELECT f FROM Friendship f WHERE f.user2.userId = :userId AND f.status = 'PENDING'")
     List<Friendship> findPendingRequests(@Param("userId") Integer userId);
+    
+    @Transactional
+    @Modifying
+    @Query("DELETE FROM Friendship f WHERE ((f.user1.userId = :u1 AND f.user2.userId = :u2) " +
+        "OR (f.user1.userId = :u2 AND f.user2.userId = :u1)) AND f.status = 'ACCEPTED'")
+    int deleteAcceptedFriendshipBetween(@Param("u1") Integer u1, @Param("u2") Integer u2);
     
     @Query("SELECT f FROM Friendship f WHERE (f.user1.userId = :u1 AND f.user2.userId = :u2) OR (f.user1.userId = :u2 AND f.user2.userId = :u1)")
     Friendship findFriendshipBetween(@Param("u1") Integer u1, @Param("u2") Integer u2);
