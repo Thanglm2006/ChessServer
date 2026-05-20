@@ -39,6 +39,8 @@ services:
         condition: service_healthy
     ports:
       - "8087:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://db:5432/chess_db}
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-Thanglm2006}
@@ -48,5 +50,6 @@ services:
       SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
 
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-599331175768-2rk7fdpri16ncb3iu3sbful0hslehdq7.apps.googleusercontent.com}
+      AI_API_URL: http://host.docker.internal:3210/api
 volumes:
   data:
