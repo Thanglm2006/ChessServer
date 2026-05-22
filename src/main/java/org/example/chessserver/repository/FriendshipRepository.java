@@ -18,12 +18,22 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Friendsh
     @Query("SELECT f FROM Friendship f WHERE f.user2.userId = :userId AND f.status = 'PENDING'")
     List<Friendship> findPendingRequests(@Param("userId") Integer userId);
     
-    @Transactional
     @Modifying
-    @Query("DELETE FROM Friendship f WHERE ((f.user1.userId = :u1 AND f.user2.userId = :u2) " +
-        "OR (f.user1.userId = :u2 AND f.user2.userId = :u1)) AND f.status = 'ACCEPTED'")
-    int deleteAcceptedFriendshipBetween(@Param("u1") Integer u1, @Param("u2") Integer u2);
-    
+    @Transactional
+    @Query(value = """
+    DELETE FROM friendships
+    WHERE (
+        (user_id_1 = :u1 AND user_id_2 = :u2)
+        OR
+        (user_id_1 = :u2 AND user_id_2 = :u1)
+    )
+    AND status = 'ACCEPTED'
+    """, nativeQuery = true)
+    int deleteAcceptedFriendshipBetween(
+            @Param("u1") Integer u1,
+            @Param("u2") Integer u2
+    );
+        
     @Query("SELECT f FROM Friendship f WHERE (f.user1.userId = :u1 AND f.user2.userId = :u2) OR (f.user1.userId = :u2 AND f.user2.userId = :u1)")
     Friendship findFriendshipBetween(@Param("u1") Integer u1, @Param("u2") Integer u2);
 }

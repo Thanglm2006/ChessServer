@@ -36,4 +36,9 @@ public class FriendController {
         friendService.acceptFriendRequest(user1, user2);
         return ResponseEntity.ok("Friend request accepted");
     }
+    @PostMapping("/remove")
+    public ResponseEntity<String> removeFriend(@RequestParam int user1, @RequestParam int user2) {
+        friendService.removeFriend(user1, user2);
+        return ResponseEntity.ok("Friend removed");
+    }
 }
