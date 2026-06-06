@@ -43,6 +43,8 @@ services:
       SPRING_DATA_REDIS_PORT: ${SPRING_DATA_REDIS_PORT:-6379}
 
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-599331175768-2rk7fdpri16ncb3iu3sbful0hslehdq7.apps.googleusercontent.com}
-      AI_API_URL: ${AI_API_URL:-http://localhost:3210/api}
+      AI_API_URL: ${AI_API_URL:-http://host.docker.internal:3210/api}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 volumes:
   data:
