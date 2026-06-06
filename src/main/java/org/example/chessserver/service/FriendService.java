@@ -11,6 +11,9 @@ import org.example.chessserver.repository.UserRepository;
 import org.example.chessserver.websocket.ChessWebSocketHandler;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.http.HttpStatus;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -25,7 +28,7 @@ public class FriendService {
     
     @Lazy
     private final ChessWebSocketHandler webSocketHandler;
-
+    
     public void sendFriendRequest(int senderId, int receiverId) {
         if (senderId == receiverId) {
             throw new RuntimeException("You cannot send a friend request to yourself");
@@ -87,4 +90,21 @@ public class FriendService {
                     .build();
         }).collect(Collectors.toList());
     }
+    @Transactional
+    public void removeFriend(int u1, int u2) {
+        int deletedRows =
+                friendshipRepository.deleteAcceptedFriendshipBetween(u1, u2);
+
+        if (deletedRows == 0) {
+            throw new FriendshipNotFoundException(
+                    "Friendship not found or not accepted"
+            );
+        }
+    }
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+        public class FriendshipNotFoundException extends RuntimeException {
+            public FriendshipNotFoundException(String message) {
+                super(message);
+            }
+        }
 }
