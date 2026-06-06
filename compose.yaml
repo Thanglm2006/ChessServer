@@ -33,7 +33,7 @@ services:
     build: .
     container_name: chess_backend
     ports:
-      - "8087:8080"
+      - "8087:8087"
     environment:
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://db:5432/chess_db}
       SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-Thanglm2006}
