@@ -1,10 +1,10 @@
 package org.example.chessserver.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.example.chessserver.dto.GameDto;
 import org.example.chessserver.dto.GameMoveDto;
 import org.example.chessserver.dto.TournamentPairingDto;
 import org.example.chessserver.dto.TournamentRoundDto;
-import org.example.chessserver.entity.Game;
 import org.example.chessserver.service.ReplayService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -43,7 +43,7 @@ public class ReplayController {
     }
 
     @GetMapping("/api/games/{gameId}")
-    public ResponseEntity<Game> getGame(@PathVariable Integer gameId) {
+    public ResponseEntity<GameDto> getGame(@PathVariable Integer gameId) {
         return ResponseEntity.ok(replayService.getGame(gameId));
     }
 

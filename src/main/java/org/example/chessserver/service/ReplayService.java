@@ -1,6 +1,7 @@
 package org.example.chessserver.service;
 
 import lombok.RequiredArgsConstructor;
+import org.example.chessserver.dto.GameDto;
 import org.example.chessserver.dto.GameMoveDto;
 import org.example.chessserver.dto.TournamentPairingDto;
 import org.example.chessserver.dto.TournamentRoundDto;
@@ -61,18 +62,41 @@ public class ReplayService {
                 .collect(Collectors.toList());
     }
 
-    public Game getGame(Integer gameId) {
-        List<TournamentPairing> pairings = pairingRepository.findAll().stream()
-                .filter(p -> p.getGame() != null && p.getGame().getGameId().equals(gameId))
-                .collect(Collectors.toList());
-        if (!pairings.isEmpty()) {
-            Tournament t = pairings.get(0).getRound().getTournament();
+    public GameDto getGame(Integer gameId) {
+        java.util.Optional<TournamentPairing> pairingOpt = pairingRepository.findByGameGameId(gameId);
+        if (pairingOpt.isPresent()) {
+            Tournament t = pairingOpt.get().getRound().getTournament();
             if (!"FINISHED".equals(t.getStatus())) {
                 throw new org.springframework.security.access.AccessDeniedException("Tournament replay is available only after the tournament has finished.");
             }
         }
-        return gameRepository.findById(gameId)
+        Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new RuntimeException("Game not found"));
+
+        GameDto.PlayerDto whiteDto = null;
+        if (game.getWhitePlayer() != null) {
+            whiteDto = GameDto.PlayerDto.builder()
+                    .userId(game.getWhitePlayer().getUserId())
+                    .username(game.getWhitePlayer().getUsername())
+                    .build();
+        }
+
+        GameDto.PlayerDto blackDto = null;
+        if (game.getBlackPlayer() != null) {
+            blackDto = GameDto.PlayerDto.builder()
+                    .userId(game.getBlackPlayer().getUserId())
+                    .username(game.getBlackPlayer().getUsername())
+                    .build();
+        }
+
+        return GameDto.builder()
+                .gameId(game.getGameId())
+                .whitePlayer(whiteDto)
+                .blackPlayer(blackDto)
+                .result(game.getResult())
+                .pgnData(game.getPgnData())
+                .playedAt(game.getPlayedAt())
+                .build();
     }
 
     public List<GameMoveDto> getGameMoves(Integer gameId) {

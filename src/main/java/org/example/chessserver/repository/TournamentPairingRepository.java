@@ -16,4 +16,6 @@ public interface TournamentPairingRepository extends JpaRepository<TournamentPai
 
     @Query("SELECT tp FROM TournamentPairing tp WHERE (tp.whitePlayer.userId = :userId OR tp.blackPlayer.userId = :userId) AND tp.round.tournament.tournamentId = :tournamentId")
     List<TournamentPairing> findUserPairingsInTournament(@Param("userId") Integer userId, @Param("tournamentId") Integer tournamentId);
+
+    java.util.Optional<TournamentPairing> findByGameGameId(Integer gameId);
 }
