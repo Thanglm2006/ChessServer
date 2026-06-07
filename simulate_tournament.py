@@ -4,6 +4,18 @@ import json
 import time
 import sys
 
+class Tee:
+    def __init__(self, *files):
+        self.files = files
+    def write(self, obj):
+        for f in self.files:
+            f.write(obj)
+            f.flush()
+    def flush(self):
+        for f in self.files:
+            f.flush()
+
+
 # Configuration
 API_BASE = "http://localhost:8087/api"
 AI_API_BASE = "http://localhost:3210/api"
@@ -259,4 +271,11 @@ def main():
         print(f"Rank {idx+1}: {st['username']} - Score: {st['currentScore']} (Buchholz: {st['buchholz']}, SB: {st['sonnebornBerger']})")
 
 if __name__ == "__main__":
-    main()
+    log_file = open("tournament_simulation.log", "w", encoding="utf-8")
+    sys.stdout = Tee(sys.stdout, log_file)
+    sys.stderr = Tee(sys.stderr, log_file)
+    try:
+        main()
+    finally:
+        log_file.close()
+
