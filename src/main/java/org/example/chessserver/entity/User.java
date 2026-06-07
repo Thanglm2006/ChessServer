@@ -27,6 +27,12 @@ public class User {
     @Column(name = "country_code", length = 2)
     private String countryCode;
 
+    @Column(name = "role", length = 20)
+    private String role = "ROLE_USER";
+
+    @Column(name = "is_banned")
+    private Boolean isBanned = false;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private ZonedDateTime createdAt;
 }

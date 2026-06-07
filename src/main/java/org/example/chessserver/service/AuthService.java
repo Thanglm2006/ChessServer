@@ -192,8 +192,12 @@ public class AuthService {
 
             String identifier = request.getEmail().trim();
             User user = userRepository.findByEmail(identifier)
-                    .orElseGet(() -> userRepository.findByUsername(identifier)
-                            .orElseThrow(() -> new RuntimeException("Tài khoản không tồn tại, vui lòng đăng ký!")));
+                     .orElseGet(() -> userRepository.findByUsername(identifier)
+                             .orElseThrow(() -> new RuntimeException("Tài khoản không tồn tại, vui lòng đăng ký!")));
+
+            if (Boolean.TRUE.equals(user.getIsBanned())) {
+                throw new RuntimeException("Tài khoản của bạn đã bị khóa");
+            }
 
             if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
                 throw new RuntimeException("Mật khẩu không chính xác");
@@ -201,7 +205,8 @@ public class AuthService {
 
             String accessToken = jwtUtil.generateToken(
                     user.getEmail(),
-                    user.getUserId()
+                    user.getUserId(),
+                    user.getRole()
             );
 
             String refreshToken = refreshTokenService.createRefreshToken(
@@ -333,9 +338,14 @@ public class AuthService {
                     return userRepository.save(newUser);
                 });
 
+                if (Boolean.TRUE.equals(user.getIsBanned())) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new MessageResponse("Tài khoản của bạn đã bị khóa"));
+                }
+
                 String accessToken = jwtUtil.generateToken(
                         user.getEmail(),
-                        user.getUserId()
+                        user.getUserId(),
+                        user.getRole()
                 );
 
                 String refreshToken = refreshTokenService.createRefreshToken(
@@ -376,5 +386,72 @@ public class AuthService {
                 "User not found"
         ));
         return ResponseEntity.ok(user);
+    }
+
+    public ResponseEntity<?> makeAdmin(Map<String, String> body) {
+        String email = body.get("email");
+        String secretCode = body.get("secretCode");
+        
+        if (!"Thang#2006".equals(secretCode) && !"ADMIN_SECRET_KEY_2026".equals(secretCode) && !"ADMIN_SECRET".equals(secretCode)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new MessageResponse("Invalid secret code"));
+        }
+        
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        user.setRole("ROLE_ADMIN");
+        userRepository.save(user);
+        return ResponseEntity.ok(new MessageResponse("User promoted to admin successfully"));
+    }
+
+    public ResponseEntity<?> createAdmin(Map<String, String> body) {
+        String username = body.get("username");
+        String email = body.get("email");
+        String password = body.get("password");
+        String countryCode = body.get("countryCode");
+        String secretCode = body.get("secretCode");
+        
+        if (!"Thang#2006".equals(secretCode) && !"ADMIN_SECRET_KEY_2026".equals(secretCode) && !"ADMIN_SECRET".equals(secretCode)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new MessageResponse("Invalid secret code"));
+        }
+        
+        if (userRepository.findByEmail(email).isPresent()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponse("Email already exists"));
+        }
+        
+        User user = new User();
+        user.setUsername(username.trim());
+        user.setEmail(email.trim());
+        user.setPassword(passwordEncoder.encode(password));
+        user.setCountryCode(countryCode);
+        user.setRole("ROLE_ADMIN");
+        
+        userRepository.save(user);
+        return ResponseEntity.ok(new MessageResponse("Admin account created successfully"));
+    }
+
+    public ResponseEntity<?> createBotUser(Map<String, String> body) {
+        String username = body.get("username");
+        String email = body.get("email");
+        String password = body.get("password");
+        String countryCode = body.get("countryCode");
+        String secretCode = body.get("secretCode");
+        
+        if (!"Thang#2006".equals(secretCode) && !"ADMIN_SECRET_KEY_2026".equals(secretCode) && !"ADMIN_SECRET".equals(secretCode)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new MessageResponse("Invalid secret code"));
+        }
+        
+        if (userRepository.findByEmail(email).isPresent()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponse("Email already exists"));
+        }
+        
+        User user = new User();
+        user.setUsername(username.trim());
+        user.setEmail(email.trim());
+        user.setPassword(passwordEncoder.encode(password));
+        user.setCountryCode(countryCode != null ? countryCode : "VN");
+        user.setRole("ROLE_USER");
+        
+        userRepository.save(user);
+        return ResponseEntity.ok(new MessageResponse("Bot account created successfully"));
     }
 }

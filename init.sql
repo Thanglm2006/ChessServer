@@ -146,3 +146,63 @@ FROM users u
 JOIN elo_ratings e ON u.user_id = e.user_id
 WHERE e.games_played > 0
 ORDER BY e.rating DESC;
+
+-- 9. ADMIN & TOURNAMENT EXTENSIONS
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'ROLE_USER';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS tournaments (
+    tournament_id SERIAL PRIMARY KEY,
+    tournament_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    total_rounds INTEGER NOT NULL,
+    time_control VARCHAR(50) NOT NULL,
+    registration_start TIMESTAMP WITH TIME ZONE,
+    registration_end TIMESTAMP WITH TIME ZONE,
+    start_time TIMESTAMP WITH TIME ZONE,
+    status VARCHAR(20) DEFAULT 'REGISTERING',
+    created_by INTEGER REFERENCES users(user_id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS tournament_participants (
+    tournament_id INTEGER REFERENCES tournaments(tournament_id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(user_id) ON DELETE CASCADE,
+    initial_rating INTEGER,
+    current_score NUMERIC(4,1) DEFAULT 0,
+    buchholz NUMERIC(6,2) DEFAULT 0,
+    sonneborn_berger NUMERIC(6,2) DEFAULT 0,
+    bye_received BOOLEAN DEFAULT FALSE,
+    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (tournament_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_rounds (
+    round_id SERIAL PRIMARY KEY,
+    tournament_id INTEGER REFERENCES tournaments(tournament_id) ON DELETE CASCADE,
+    round_number INTEGER NOT NULL,
+    started_at TIMESTAMP WITH TIME ZONE,
+    ended_at TIMESTAMP WITH TIME ZONE,
+    UNIQUE(tournament_id, round_number)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_pairings (
+    pairing_id SERIAL PRIMARY KEY,
+    round_id INTEGER REFERENCES tournament_rounds(round_id) ON DELETE CASCADE,
+    white_player_id INTEGER REFERENCES users(user_id),
+    black_player_id INTEGER REFERENCES users(user_id),
+    game_id INTEGER REFERENCES games(game_id),
+    result VARCHAR(10),
+    is_bye BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE IF NOT EXISTS game_moves (
+    move_id SERIAL PRIMARY KEY,
+    game_id INTEGER REFERENCES games(game_id) ON DELETE CASCADE,
+    move_number INTEGER NOT NULL,
+    san_move VARCHAR(20),
+    fen_after_move TEXT,
+    evaluation FLOAT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);

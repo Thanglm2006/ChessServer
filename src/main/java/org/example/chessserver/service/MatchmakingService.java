@@ -29,6 +29,10 @@ public class MatchmakingService {
     private final EloRatingRepository eloRatingRepository;
 
     public void joinQueue(int userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user != null && Boolean.TRUE.equals(user.getIsBanned())) {
+            throw new RuntimeException("Tài khoản của bạn đã bị khóa");
+        }
         redisTemplate.opsForList().rightPush(MAIN_QUEUE, String.valueOf(userId));
     }
 

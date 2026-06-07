@@ -22,6 +22,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -57,6 +59,18 @@ public class AuthController {
     @PostMapping("/google")
     public ResponseEntity<?> googleLogin(@RequestBody GoogleLoginRequest request) {
         return authService.loginWithGoogle(request);
+    }
+    @PostMapping("/make-admin")
+    public ResponseEntity<?> makeAdmin(@RequestBody Map<String, String> body) {
+        return authService.makeAdmin(body);
+    }
+    @PostMapping("/create-admin")
+    public ResponseEntity<?> createAdmin(@RequestBody Map<String, String> body) {
+        return authService.createAdmin(body);
+    }
+    @PostMapping("/create-bot-user")
+    public ResponseEntity<?> createBotUser(@RequestBody Map<String, String> body) {
+        return authService.createBotUser(body);
     }
     @GetMapping("/me")
     public ResponseEntity<?> getMe(HttpServletRequest request) {

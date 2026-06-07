@@ -47,6 +47,11 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
                 return;
             }
             int userId = jwtUtil.getClaims(token).get("userId", Integer.class);
+            User user = userRepository.findById(userId).orElse(null);
+            if (user != null && Boolean.TRUE.equals(user.getIsBanned())) {
+                session.close(CloseStatus.POLICY_VIOLATION.withReason("USER_BANNED"));
+                return;
+            }
             sessions.put(userId, session);
             broadcastPresence(userId, true);
             handleReconnection(userId);

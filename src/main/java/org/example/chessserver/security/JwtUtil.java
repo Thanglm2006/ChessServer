@@ -29,14 +29,19 @@ public class JwtUtil {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public String generateToken(String email, Integer userId) {
+    public String generateToken(String email, Integer userId, String role) {
         return Jwts.builder()
                 .subject(email)
                 .claim("userId", userId)
+                .claim("role", role)
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(key)
                 .compact();
+    }
+
+    public String generateToken(String email, Integer userId) {
+        return generateToken(email, userId, "ROLE_USER");
     }
 
     public Claims getClaims(String token) {
