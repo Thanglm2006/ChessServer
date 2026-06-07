@@ -36,7 +36,6 @@ public class ReplayService {
     }
 
     public List<TournamentRoundDto> getRounds(Integer tournamentId) {
-        verifyTournamentFinished(tournamentId);
         return roundRepository.findByTournamentTournamentIdOrderByRoundNumberAsc(tournamentId).stream()
                 .map(r -> TournamentRoundDto.builder()
                         .roundId(r.getRoundId())
@@ -49,7 +48,6 @@ public class ReplayService {
     }
 
     public List<TournamentPairingDto> getPairings(Integer tournamentId, Integer roundId) {
-        verifyTournamentFinished(tournamentId);
         return pairingRepository.findByRoundRoundId(roundId).stream()
                 .map(this::mapToPairingDto)
                 .collect(Collectors.toList());
