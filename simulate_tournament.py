@@ -194,7 +194,7 @@ def main():
                 try:
                     payload = {
                         "fen": fen,
-                        "player_move": last_move,
+                        "player_move": "",
                         "model": current_model,
                         "difficulty": 3
                     }
