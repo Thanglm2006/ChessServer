@@ -451,6 +451,16 @@ public class TournamentService {
     // --- Mappers ---
 
     private TournamentDto mapToTournamentDto(Tournament t) {
+        String status = t.getStatus();
+        ZonedDateTime now = ZonedDateTime.now();
+        if ("REGISTERING".equals(status)) {
+            if (t.getRegistrationEnd() != null && now.isAfter(t.getRegistrationEnd())) {
+                status = "REGISTRATION_CLOSED";
+            } else if (t.getRegistrationStart() != null && now.isBefore(t.getRegistrationStart())) {
+                status = "UPCOMING";
+            }
+        }
+
         return TournamentDto.builder()
                 .tournamentId(t.getTournamentId())
                 .tournamentName(t.getTournamentName())
@@ -460,7 +470,7 @@ public class TournamentService {
                 .registrationStart(t.getRegistrationStart())
                 .registrationEnd(t.getRegistrationEnd())
                 .startTime(t.getStartTime())
-                .status(t.getStatus())
+                .status(status)
                 .createdById(t.getCreatedBy() != null ? t.getCreatedBy().getUserId() : null)
                 .createdByName(t.getCreatedBy() != null ? t.getCreatedBy().getUsername() : null)
                 .build();
