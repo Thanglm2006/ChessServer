@@ -679,4 +679,71 @@ public class TournamentService {
             generateRound(t, nextRoundNum);
         }
     }
+
+    @Transactional
+    public void recoverStuckTournaments() {
+        log.info("Starting recovery check for stuck tournaments, rounds, and pairings...");
+        ZonedDateTime now = ZonedDateTime.now();
+        List<Tournament> ongoingTournaments = tournamentRepository.findAll().stream()
+                .filter(t -> "ONGOING".equals(t.getStatus()))
+                .collect(Collectors.toList());
+
+        for (Tournament t : ongoingTournaments) {
+            try {
+                TournamentRound latestRound = roundRepository.findFirstByTournamentTournamentIdOrderByRoundNumberDesc(t.getTournamentId())
+                        .orElse(null);
+                if (latestRound != null) {
+                    if (latestRound.getEndedAt() != null) {
+                        int nextRoundNum = latestRound.getRoundNumber() + 1;
+                        if (nextRoundNum <= t.getTotalRounds()) {
+                            boolean nextRoundExists = roundRepository.findByTournamentTournamentIdAndRoundNumber(t.getTournamentId(), nextRoundNum).isPresent();
+                            if (!nextRoundExists) {
+                                String breakKey = "tournament:break:next-round:" + t.getTournamentId();
+                                Boolean hasBreakKey = redisTemplate.hasKey(breakKey);
+                                if (hasBreakKey == null || !hasBreakKey) {
+                                    ZonedDateTime endedAt = latestRound.getEndedAt();
+                                    long minutesPassed = Duration.between(endedAt, now).toMinutes();
+                                    if (minutesPassed >= 10) {
+                                        log.info("Recovery: Break ended while offline for tournament {}. Starting next round...", t.getTournamentId());
+                                        generateNextRoundAfterBreak(t.getTournamentId());
+                                    } else {
+                                        long remainingSeconds = 600 - Duration.between(endedAt, now).getSeconds();
+                                        if (remainingSeconds > 0) {
+                                            log.info("Recovery: Re-scheduling break for tournament {} ({} seconds remaining)", t.getTournamentId(), remainingSeconds);
+                                            redisTemplate.opsForValue().set(breakKey, String.valueOf(nextRoundNum), Duration.ofSeconds(remainingSeconds));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        List<TournamentPairing> activePairings = pairingRepository.findByRoundRoundId(latestRound.getRoundId());
+                        for (TournamentPairing p : activePairings) {
+                            if (p.getResult() == null && !p.getIsBye() && (p.getWhiteReady() == null || !p.getWhiteReady() || p.getBlackReady() == null || !p.getBlackReady())) {
+                                if (p.getLobbyStartedAt() != null) {
+                                    String lobbyKey = "tournament:lobby:pairing:" + p.getPairingId();
+                                    Boolean hasLobbyKey = redisTemplate.hasKey(lobbyKey);
+                                    if (hasLobbyKey == null || !hasLobbyKey) {
+                                        ZonedDateTime startedAt = p.getLobbyStartedAt();
+                                        long secondsPassed = Duration.between(startedAt, now).getSeconds();
+                                        if (secondsPassed >= 300) {
+                                            log.info("Recovery: Lobby check-in expired while offline for pairing {}. Forfeiting...", p.getPairingId());
+                                            forfeitPairing(p.getPairingId());
+                                        } else {
+                                            long remainingSeconds = 300 - secondsPassed;
+                                            log.info("Recovery: Re-scheduling lobby for pairing {} ({} seconds remaining)", p.getPairingId(), remainingSeconds);
+                                            redisTemplate.opsForValue().set(lobbyKey, "ACTIVE", Duration.ofSeconds(remainingSeconds));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Failed to recover tournament {}", t.getTournamentId(), e);
+            }
+        }
+        log.info("Recovery check complete.");
+    }
 }
