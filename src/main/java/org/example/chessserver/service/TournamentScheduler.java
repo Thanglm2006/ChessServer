@@ -28,6 +28,15 @@ public class TournamentScheduler {
         }
     }
 
+    @Scheduled(fixedDelay = 10000) // check every 10 seconds
+    public void autoRecoverTournaments() {
+        try {
+            tournamentService.recoverStuckTournaments();
+        } catch (Exception e) {
+            log.error("Failed to execute periodic tournament recovery", e);
+        }
+    }
+
     @Scheduled(fixedDelay = 60000) // check every minute
     public void autoStartTournaments() {
         ZonedDateTime now = ZonedDateTime.now();
