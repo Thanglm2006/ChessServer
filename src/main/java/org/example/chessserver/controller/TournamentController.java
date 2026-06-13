@@ -6,6 +6,7 @@ import org.example.chessserver.dto.TournamentDto;
 import org.example.chessserver.dto.TournamentParticipantDto;
 import org.example.chessserver.dto.TournamentPairingDto;
 import org.example.chessserver.dto.TournamentRoundDto;
+import org.example.chessserver.dto.MyPairingDto;
 import org.example.chessserver.security.JwtUtil;
 import org.example.chessserver.service.TournamentService;
 import org.springframework.http.HttpHeaders;
@@ -62,5 +63,14 @@ public class TournamentController {
     @GetMapping("/{tournamentId}/standings")
     public ResponseEntity<List<TournamentParticipantDto>> getStandings(@PathVariable Integer tournamentId) {
         return ResponseEntity.ok(tournamentService.getStandings(tournamentId));
+    }
+
+    @GetMapping("/{tournamentId}/my-pairing")
+    public ResponseEntity<MyPairingDto> getMyPairing(
+            HttpServletRequest request,
+            @PathVariable Integer tournamentId) {
+        int userId = getUserIdFromRequest(request);
+        MyPairingDto myPairing = tournamentService.getMyPairing(tournamentId, userId);
+        return ResponseEntity.ok(myPairing);
     }
 }

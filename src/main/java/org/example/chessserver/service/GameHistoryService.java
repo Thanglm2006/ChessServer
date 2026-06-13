@@ -31,8 +31,8 @@ public class GameHistoryService {
                     (g.getBlackPlayer() != null ? g.getBlackPlayer().getUserId() : -1) : 
                     (g.getWhitePlayer() != null ? g.getWhitePlayer().getUserId() : -1);
             String oppName = isWhite ? 
-                    (g.getBlackPlayer() != null ? g.getBlackPlayer().getUsername() : "Unknown") : 
-                    (g.getWhitePlayer() != null ? g.getWhitePlayer().getUsername() : "Unknown");
+                    (g.getBlackPlayer() != null ? g.getBlackPlayer().getUsername() : extractAiModelName(g.getPgnData())) : 
+                    (g.getWhitePlayer() != null ? g.getWhitePlayer().getUsername() : extractAiModelName(g.getPgnData()));
             
             return GameHistoryDto.builder()
                     .gameId(g.getGameId())
@@ -44,5 +44,19 @@ public class GameHistoryService {
                     .playedAt(g.getPlayedAt())
                     .build();
         }).collect(Collectors.toList());
+    }
+
+    private String extractAiModelName(String pgn) {
+        if (pgn == null || pgn.isEmpty()) {
+            return "AI";
+        }
+        if (pgn.startsWith("{AI:") && pgn.contains("}")) {
+            int endIndex = pgn.indexOf("}");
+            String model = pgn.substring(4, endIndex).trim();
+            if (!model.isEmpty()) {
+                return model;
+            }
+        }
+        return "AI";
     }
 }

@@ -102,7 +102,7 @@ def main():
     print("\n--- 4. Creating Tournament ---")
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
     tourney_payload = {
-        "tournamentName": "AI Swiss Masters 2026",
+        "tournamentName": "AI Swiss Masters Summer 2026",
         "description": "Simulated match-play championship between neural network checkpoints.",
         "totalRounds": 3,
         "timeControl": "10+0",
@@ -194,7 +194,7 @@ def main():
                 try:
                     payload = {
                         "fen": fen,
-                        "player_move": "",
+                        "player_move": last_move,
                         "model": current_model,
                         "difficulty": 3
                     }

@@ -119,7 +119,7 @@ public class AiGameService {
             response.put("aiFirstMove", aiMoveSan);
 
             if (isGameOver) {
-                saveCompletedGame(userId, gameId, finalColor, result, Collections.singletonList(aiMoveSan));
+                saveCompletedGame(userId, gameId, finalColor, result, Collections.singletonList(aiMoveSan), finalModel);
             }
         }
 
@@ -192,7 +192,7 @@ public class AiGameService {
 
         if (isGameOver) {
             List<String> moves = redisTemplate.opsForList().range(historyKey, 0, -1);
-            saveCompletedGame(userId, gameId, playerColor, result, moves);
+            saveCompletedGame(userId, gameId, playerColor, result, moves, aiModel);
         }
 
         return response;
@@ -219,6 +219,7 @@ public class AiGameService {
         }
 
         String playerColor = (String) entries.get("playerColor");
+        String aiModel = (String) entries.get("aiModel");
         String result = "WHITE".equals(playerColor) ? "0-1" : "1-0"; // AI wins
 
         List<String> moves = redisTemplate.opsForList().range(gameKey + ":history", 0, -1);
@@ -227,7 +228,7 @@ public class AiGameService {
         }
 
         log.info("User {} resigned AI game {}. Final result: {}", userId, gameId, result);
-        saveCompletedGame(userId, gameId, playerColor, result, moves);
+        saveCompletedGame(userId, gameId, playerColor, result, moves, aiModel);
 
         Map<String, Object> response = new HashMap<>();
         response.put("gameId", gameId);
@@ -349,7 +350,7 @@ public class AiGameService {
     /**
      * Save completed game history to the database and clean up Redis keys.
      */
-    private void saveCompletedGame(int userId, String gameId, String playerColor, String result, List<String> moves) {
+    private void saveCompletedGame(int userId, String gameId, String playerColor, String result, List<String> moves, String aiModel) {
         try {
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("User not found for game saving."));
@@ -364,7 +365,8 @@ public class AiGameService {
             }
 
             game.setResult(result != null ? result : "1/2-1/2");
-            game.setPgnData(buildPgn(moves));
+            String pgnPrefix = (aiModel != null && !aiModel.isEmpty()) ? "{AI:" + aiModel + "} " : "";
+            game.setPgnData(pgnPrefix + buildPgn(moves));
 
             gameRepository.save(game);
             log.info("Saved AI game {} to database. Player color={}, Result={}", gameId, playerColor, result);

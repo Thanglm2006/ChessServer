@@ -1,0 +1,118 @@
+--- 1. Creating Bot Users ---
+bot_ai_1 already exists, skipping creation
+bot_ai_2 already exists, skipping creation
+bot_ai_3 already exists, skipping creation
+bot_ai_4 already exists, skipping creation
+bot_ai_5 already exists, skipping creation
+bot_ai_6 already exists, skipping creation
+bot_ai_7 already exists, skipping creation
+bot_ai_8 already exists, skipping creation
+
+--- 2. Logging in users ---
+Admin logged in successfully.
+
+--- 3. Fetching AI Models ---
+Available AI Models: ['model_ep1', 'model_ep2', 'model_ep1_batch2000', 'model_ep3', 'model_ep4', 'model_ep2_batch2000', 'finetuned_best', 'model_ep1_batch4000', 'best_model', 'model_ep5', 'v1_finetuned_ep3', 'v1_finetuned_ep2', 'v1_finetuned_ep1', 'v1_finetuned_ep4', 'v1_finetuned_best', 'v1_finetuned_ep5']
+Bot bot_ai_1 will use model: model_ep1
+Bot bot_ai_2 will use model: model_ep2
+Bot bot_ai_3 will use model: model_ep1_batch2000
+Bot bot_ai_4 will use model: model_ep3
+Bot bot_ai_5 will use model: model_ep4
+Bot bot_ai_6 will use model: model_ep2_batch2000
+Bot bot_ai_7 will use model: finetuned_best
+Bot bot_ai_8 will use model: model_ep1_batch4000
+
+--- 4. Creating Tournament ---
+Created Tournament 'AI Swiss Masters 2026' with ID: 4
+
+--- 5. Bots Joining Tournament ---
+Bot bot_ai_1 joined tournament
+Bot bot_ai_2 joined tournament
+Bot bot_ai_3 joined tournament
+Bot bot_ai_4 joined tournament
+Bot bot_ai_5 joined tournament
+Bot bot_ai_6 joined tournament
+Bot bot_ai_7 joined tournament
+Bot bot_ai_8 joined tournament
+
+--- 6. Starting Tournament ---
+Tournament started successfully!
+
+=================== SIMULATING ROUND 1 ===================
+Found 4 pairings in round 1:
+
+Playing Game: [White] bot_ai_1 vs [Black] bot_ai_5
+Simulating AI play: bot_ai_1 (model_ep1) vs bot_ai_5 (model_ep4)
+Game completed in 60 steps. Result: 1/2-1/2
+Simulated game for pairing 29 submitted successfully!
+
+Playing Game: [White] bot_ai_2 vs [Black] bot_ai_6
+Simulating AI play: bot_ai_2 (model_ep2) vs bot_ai_6 (model_ep2_batch2000)
+Game completed in 60 steps. Result: 0-1
+Simulated game for pairing 30 submitted successfully!
+
+Playing Game: [White] bot_ai_3 vs [Black] bot_ai_7
+Simulating AI play: bot_ai_3 (model_ep1_batch2000) vs bot_ai_7 (finetuned_best)
+Game completed in 60 steps. Result: 1/2-1/2
+Simulated game for pairing 31 submitted successfully!
+
+Playing Game: [White] bot_ai_4 vs [Black] bot_ai_8
+Simulating AI play: bot_ai_4 (model_ep3) vs bot_ai_8 (model_ep1_batch4000)
+Game completed in 60 steps. Result: 1/2-1/2
+Simulated game for pairing 32 submitted successfully!
+
+=================== SIMULATING ROUND 2 ===================
+Found 4 pairings in round 2:
+
+Playing Game: [White] bot_ai_6 vs [Black] bot_ai_1
+Simulating AI play: bot_ai_6 (model_ep2_batch2000) vs bot_ai_1 (model_ep1)
+Game completed in 60 steps. Result: 1/2-1/2
+Simulated game for pairing 33 submitted successfully!
+
+Playing Game: [White] bot_ai_3 vs [Black] bot_ai_4
+Simulating AI play: bot_ai_3 (model_ep1_batch2000) vs bot_ai_4 (model_ep3)
+Game completed in 60 steps. Result: 1/2-1/2
+Simulated game for pairing 34 submitted successfully!
+
+Playing Game: [White] bot_ai_5 vs [Black] bot_ai_7
+Simulating AI play: bot_ai_5 (model_ep4) vs bot_ai_7 (finetuned_best)
+Game completed in 60 steps. Result: 1/2-1/2
+Simulated game for pairing 35 submitted successfully!
+
+Playing Game: [White] bot_ai_8 vs [Black] bot_ai_2
+Simulating AI play: bot_ai_8 (model_ep1_batch4000) vs bot_ai_2 (model_ep2)
+Game completed in 60 steps. Result: 1/2-1/2
+Simulated game for pairing 36 submitted successfully!
+
+=================== SIMULATING ROUND 3 ===================
+Found 4 pairings in round 3:
+
+Playing Game: [White] bot_ai_6 vs [Black] bot_ai_3
+Simulating AI play: bot_ai_6 (model_ep2_batch2000) vs bot_ai_3 (model_ep1_batch2000)
+Game completed in 60 steps. Result: 1/2-1/2
+Simulated game for pairing 37 submitted successfully!
+
+Playing Game: [White] bot_ai_1 vs [Black] bot_ai_4
+Simulating AI play: bot_ai_1 (model_ep1) vs bot_ai_4 (model_ep3)
+Game completed in 60 steps. Result: 1/2-1/2
+Simulated game for pairing 38 submitted successfully!
+
+Playing Game: [White] bot_ai_5 vs [Black] bot_ai_8
+Simulating AI play: bot_ai_5 (model_ep4) vs bot_ai_8 (model_ep1_batch4000)
+Game completed in 60 steps. Result: 1/2-1/2
+Simulated game for pairing 39 submitted successfully!
+
+Playing Game: [White] bot_ai_7 vs [Black] bot_ai_2
+Simulating AI play: bot_ai_7 (finetuned_best) vs bot_ai_2 (model_ep2)
+Game completed in 60 steps. Result: 1/2-1/2
+Simulated game for pairing 40 submitted successfully!
+
+--- 8. Tournament Finished Standings ---
+Rank 1: bot_ai_6 - Score: 2.0 (Buchholz: 4.0, SB: 2.5)
+Rank 2: bot_ai_3 - Score: 1.5 (Buchholz: 5.0, SB: 2.5)
+Rank 3: bot_ai_1 - Score: 1.5 (Buchholz: 5.0, SB: 2.5)
+Rank 4: bot_ai_4 - Score: 1.5 (Buchholz: 4.5, SB: 2.25)
+Rank 5: bot_ai_5 - Score: 1.5 (Buchholz: 4.5, SB: 2.25)
+Rank 6: bot_ai_8 - Score: 1.5 (Buchholz: 4.0, SB: 2.0)
+Rank 7: bot_ai_7 - Score: 1.5 (Buchholz: 4.0, SB: 2.0)
+Rank 8: bot_ai_2 - Score: 1.0 (Buchholz: 5.0, SB: 1.5)

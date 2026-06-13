@@ -36,4 +36,13 @@ public class TournamentPairing {
 
     @Column(name = "is_bye")
     private Boolean isBye;
+
+    @Column(name = "white_ready")
+    private Boolean whiteReady;
+
+    @Column(name = "black_ready")
+    private Boolean blackReady;
+
+    @Column(name = "lobby_started_at")
+    private java.time.ZonedDateTime lobbyStartedAt;
 }

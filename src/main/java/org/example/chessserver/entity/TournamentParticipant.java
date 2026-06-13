@@ -40,6 +40,9 @@ public class TournamentParticipant {
     @Column(name = "bye_received")
     private Boolean byeReceived;
 
+    @Column(name = "reminder_sent")
+    private Boolean reminderSent;
+
     @Column(name = "joined_at", insertable = false, updatable = false)
     private ZonedDateTime joinedAt;
 }

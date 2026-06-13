@@ -1,0 +1,170 @@
+# Kế hoạch Hiện đại hóa Hệ thống Giải đấu (Tournament Modernization Plan)
+
+Kế hoạch này chi tiết hóa các bước thiết kế và triển khai tính năng quản lý giải đấu hoàn chỉnh: gửi email nhắc nhở, phòng chờ trận đấu (Lobby), cơ chế xác nhận sẵn sàng (Check-in), và xử thua tự động khi không tham gia đúng giờ.
+
+---
+
+## 1. Quy trình Hoạt động của Giải đấu (Tournament Workflow)
+
+Quy trình dưới đây mô tả chuỗi vòng đời giải đấu từ lúc đăng ký đến khi kết thúc:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Player A
+    actor Player B
+    participant Server as Backend Server
+    participant DB as PostgreSQL / Redis
+
+    Note over Server: 3 tiếng trước giờ Start
+    Server->>Server: Kích hoạt Scheduler gửi Mail
+    Server->>Player A: Gửi email thông báo lịch thi đấu
+    Server->>Player B: Gửi email thông báo lịch thi đấu
+
+    Note over Server: Đến giờ bắt đầu (StartTime)
+    Server->>DB: Cập nhật status sang ONGOING
+    Server->>Server: Ghép cặp Vòng 1 (Swiss Pairing)
+    Server->>Player A: Gửi WebSocket event: ROUND_STARTED & PAIRING_ANNOUNCED
+    Server->>Player B: Gửi WebSocket event: ROUND_STARTED & PAIRING_ANNOUNCED
+
+    Note over Player A, Player B: Giai đoạn Check-in (5 Phút)
+    Player A->>Server: WebSocket: JOIN_LOBBY (Sẵn sàng)
+    Server->>Player B: WebSocket: OPPONENT_READY
+    
+    alt Player B không vào Lobby sau 5 phút
+        Note over Server: Hết thời gian chờ (Lobby Timeout)
+        Server->>DB: Xử thua Player B (0 điểm), xử thắng Player A (1.0 điểm)
+        Server->>Player A: WebSocket: ROUND_FINISHED (Thắng do đối thủ vắng mặt)
+    else Player B vào Lobby kịp thời
+        Player B->>Server: WebSocket: JOIN_LOBBY (Sẵn sàng)
+        Server->>Player A: WebSocket: OPPONENT_READY
+        Server->>Server: Khởi tạo bàn cờ WebSocket (Game Room)
+        Server->>Player A: Chuyển màn hình vào bàn đấu (White/Black)
+        Server->>Player B: Chuyển màn hình vào bàn đấu (White/Black)
+    end
+```
+
+---
+
+## 2. Thiết kế Cơ sở Dữ liệu & APIs (Backend Design)
+
+### 2.1 Cấu trúc Bảng Database bổ sung (SQL)
+Để quản lý trạng thái sẵn sàng và lịch gửi mail của từng vòng đấu, chúng ta bổ sung các trường vào cơ sở dữ liệu:
+
+```sql
+-- Cập nhật bảng tournament_participants để theo dõi trạng thái gửi mail nhắc nhở
+ALTER TABLE tournament_participants ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT FALSE;
+
+-- Cập nhật bảng tournament_pairings để lưu trữ trạng thái sẵn sàng của mỗi người chơi trong vòng đấu
+ALTER TABLE tournament_pairings ADD COLUMN IF NOT EXISTS white_ready BOOLEAN DEFAULT FALSE;
+ALTER TABLE tournament_pairings ADD COLUMN IF NOT EXISTS black_ready BOOLEAN DEFAULT FALSE;
+ALTER TABLE tournament_pairings ADD COLUMN IF NOT EXISTS lobby_started_at TIMESTAMP WITH TIME ZONE;
+```
+
+### 2.2 Các API Endpoint bổ sung (REST)
+*   `GET /api/tournaments/{id}/my-pairing`
+    *   **Mô tả:** Lấy thông tin cặp đấu hiện tại của người dùng đang đăng nhập trong giải đấu này.
+    *   **Response:**
+        ```json
+        {
+          "pairingId": 123,
+          "roundNumber": 2,
+          "opponentName": "OpponentUsername",
+          "opponentRating": 1420,
+          "myColor": "WHITE",
+          "isBye": false,
+          "lobbyTimeLimitSeconds": 300,
+          "lobbyTimeLeftSeconds": 240,
+          "iAmReady": true,
+          "opponentReady": false
+        }
+        ```
+
+### 2.3 Thiết kế WebSocket Events cho Phòng chờ (Lobby)
+Để đồng bộ hóa trạng thái phòng chờ thời gian thực:
+
+1.  **Client gửi yêu cầu vào phòng chờ và báo sẵn sàng:**
+    ```json
+    {
+      "type": "TOURNAMENT_JOIN_LOBBY",
+      "pairingId": 123
+    }
+    ```
+2.  **Server thông báo trạng thái sẵn sàng thay đổi tới đối thủ:**
+    ```json
+    {
+      "type": "TOURNAMENT_LOBBY_UPDATE",
+      "pairingId": 123,
+      "whiteReady": true,
+      "blackReady": false
+    }
+    ```
+3.  **Server thông báo trận đấu chính thức bắt đầu (khi cả 2 đã sẵn sàng):**
+    ```json
+    {
+      "type": "TOURNAMENT_MATCH_START",
+      "pairingId": 123,
+      "gameId": "game-uuid-string"
+    }
+    ```
+
+---
+
+## 3. Kiến trúc Xử lý Đếm giờ tự động (Backend Timer Logic)
+
+Để đảm bảo hiệu năng và xử lý chuẩn xác thời gian thực, chúng ta triển khai cơ chế kết hợp giữa **Redis** và **Spring Scheduler**:
+
+1.  **Gửi Mail nhắc nhở trước 3 tiếng:**
+    *   Tạo class `TournamentNotificationScheduler` chạy mỗi 10 phút.
+    *   Tìm kiếm các giải đấu có `status = 'REGISTERING'` và thời gian thi đấu cách hiện tại: `startTime - 3h <= now < startTime - 2h50m`.
+    *   Lấy danh sách email của tất cả kỳ thủ đã đăng ký và gửi email đồng loạt (sử dụng `MimeMessageHelper` kèm luồng xử lý không đồng bộ `@Async` để không làm nghẽn Scheduler).
+2.  **Xử thua vắng mặt (Forfeit Timeout) dùng Redis Key Expiration:**
+    *   Khi một vòng đấu mới được tạo (`generateRound`), hệ thống sẽ ghi các key vào Redis cho mỗi cặp đấu:
+        *   `Key`: `tournament:lobby:pairing:{pairingId}`
+        *   `Value`: `ACTIVE`
+        *   `TTL (Time to live)`: `300` giây (5 phút).
+    *   Nếu cả hai đấu thủ đều báo sẵn sàng, server xóa key Redis này đi và bắt đầu ván đấu.
+    *   Nếu key hết hạn (Expired Event được kích hoạt trong `MatchmakingService` hoặc một Event Listener tương đương):
+        *   Hệ thống kiểm tra xem ai chưa sẵn sàng (`white_ready = false` hoặc `black_ready = false`).
+        *   Cập nhật kết quả cặp đấu trong DB:
+            *   Nếu cả hai không sẵn sàng: Kết quả hòa `1/2-1/2` hoặc cả hai bị xử thua `0-0` (tùy luật giải đấu).
+            *   Nếu Trắng sẵn sàng nhưng Đen vắng mặt: Xử thắng cho Trắng `1-0` (do Đen forfeit).
+            *   Nếu Đen sẵn sàng nhưng Trắng vắng mặt: Xử thắng cho Đen `0-1`.
+        *   Gọi `submitPairingResult` để cập nhật bảng điểm giải đấu.
+
+---
+
+## 4. Thiết kế Màn hình Phòng chờ (Android Frontend Design)
+
+Khi người dùng tham gia một giải đấu đang diễn ra (`status = ONGOING`):
+1.  Nếu có vòng đấu mới, app sẽ hiển thị một nút nổi bật **"Vào phòng chờ thi đấu"** hoặc tự động mở màn hình **TournamentLobbyScreen**.
+2.  **TournamentLobbyScreen** sẽ bao gồm:
+    *   **Thanh trạng thái giải đấu:** Vòng hiện tại, bảng điểm hiện tại của người chơi.
+    *   **Thông tin Cặp đấu:**
+        *   Bên trái: Người chơi (Avatar, Tên, ELO, Đèn xanh báo "Sẵn sàng").
+        *   Bên phải: Đối thủ (Avatar, Tên, ELO, Đèn báo trạng thái trực tuyến/sẵn sàng).
+    *   **Đồng hồ đếm ngược:** Đếm ngược 5 phút thời gian chờ điểm danh. Chữ hiển thị chuyển sang màu đỏ và nhấp nháy khi còn dưới 1 phút.
+    *   **Nút Hành động:** Nút to, rõ ràng **"XÁC NHẬN SẴN SÀNG"** (đổi màu xanh khi đã bấm).
+    *   **Tự động chuyển màn hình:** Khi nhận được websocket event `TOURNAMENT_MATCH_START`, ứng dụng tự động hiển thị màn hình chơi cờ trực tuyến với đúng màu quân được chỉ định.
+
+---
+
+## 5. Lộ trình Triển khai (Implementation Steps)
+
+### Phase 1: Nâng cấp Database & Gửi Mail
+- [ ] Chỉnh sửa Schema DB (SQL Migration).
+- [ ] Cấu hình Spring Boot Mail Starter (`application.properties` / `.env` với các thông tin SMTP).
+- [ ] Viết `EmailService` hỗ trợ gửi mail template HTML đẹp mắt.
+- [ ] Viết `TournamentNotificationScheduler` định giờ gửi mail nhắc nhở trước 3 tiếng.
+
+### Phase 2: Lập trình Phòng chờ & Xử thua tự động (Backend)
+- [ ] Cập nhật API lấy thông tin cặp đấu vòng hiện tại kèm thời gian đếm ngược.
+- [ ] Tích hợp Redis Expiration Listener để bắt sự kiện hết giờ phòng chờ 5 phút.
+- [ ] Viết hàm xử thua vắng mặt (`forfeitPairing`) trong `TournamentService`.
+- [ ] Cập nhật WebSocket Handler để xử lý các event `JOIN_LOBBY`, đồng bộ trạng thái sẵn sàng thời gian thực.
+
+### Phase 3: Xây dựng Giao diện Phòng chờ (Android App)
+- [ ] Tạo màn hình `TournamentLobbyScreen` bằng Jetpack Compose với phong cách Dark Mode hiện đại.
+- [ ] Thiết kế cơ chế đếm ngược thời gian thực trên giao diện.
+- [ ] Lắng nghe WebSocket và cập nhật trạng thái sẵn sàng của đối thủ.
+- [ ] Thử nghiệm luồng tự động chuyển hướng vào bàn đấu cờ khi cả hai đã sẵn sàng.

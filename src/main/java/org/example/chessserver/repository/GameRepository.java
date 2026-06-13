@@ -19,4 +19,7 @@ public interface GameRepository extends JpaRepository<Game, Integer> {
 
     @Query("SELECT g FROM Game g WHERE g.whitePlayer.userId = :userId OR g.blackPlayer.userId = :userId ORDER BY g.playedAt DESC")
     Page<Game> findGamesByUserId(@Param("userId") Integer userId, Pageable pageable);
+
+    @Query(value = "SELECT * FROM games WHERE white_player_id = :whiteId AND black_player_id = :blackId ORDER BY game_id DESC LIMIT 1", nativeQuery = true)
+    Game findLatestGameBetweenPlayers(@Param("whiteId") Integer whiteId, @Param("blackId") Integer blackId);
 }

@@ -7,10 +7,12 @@ import org.example.chessserver.repository.EloRatingRepository;
 import org.example.chessserver.repository.GameRepository;
 import org.example.chessserver.repository.FriendshipRepository;
 import org.example.chessserver.entity.Friendship;
+import org.example.chessserver.entity.Game;
 import org.example.chessserver.repository.UserRepository;
 import org.example.chessserver.security.JwtUtil;
 import org.example.chessserver.service.ChessGameService;
 import org.example.chessserver.service.GameRedisService;
+import org.example.chessserver.service.TournamentService;
 import org.json.JSONObject;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -18,6 +20,8 @@ import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 
 import java.time.Duration;
 import java.util.*;
@@ -37,6 +41,10 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
     private final StringRedisTemplate redisTemplate;
     private final JwtUtil jwtUtil;
     private final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ChessWebSocketHandler.class);
+
+    @Autowired
+    @Lazy
+    private TournamentService tournamentService;
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
@@ -83,6 +91,7 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
             case "REMATCH_RESPONSE" -> handleRematchResponse(json, userId);
             case "INVITE_FRIEND" -> handleInviteFriend(json, userId);
             case "ACCEPT_INVITE" -> handleAcceptInvite(json.getInt("hostId"), userId);
+            case "TOURNAMENT_JOIN_LOBBY" -> tournamentService.joinLobby(json.getInt("pairingId"), userId);
         }
     }
 
@@ -143,7 +152,11 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
-    private void startGameDirectly(String gameId, int u1, int u2, String matchType) {
+    public void startGameDirectly(String gameId, int u1, int u2, String matchType) {
+        startGameDirectly(gameId, u1, u2, matchType, null);
+    }
+
+    public void startGameDirectly(String gameId, int u1, int u2, String matchType, Integer pairingId) {
         long time = switch(matchType) {
             case "bullet" -> 60;
             case "blitz" -> 180;
@@ -157,12 +170,19 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
         data.put("black", String.valueOf(u2));
         data.put("type", matchType);
         data.put("fen", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+        if (pairingId != null) {
+            data.put("pairingId", String.valueOf(pairingId));
+        }
         redisTemplate.opsForHash().putAll(gameKey, data);
         redisTemplate.opsForValue().set("user:current_game:" + u1, gameId, Duration.ofSeconds(7200));
         redisTemplate.opsForValue().set("user:current_game:" + u2, gameId, Duration.ofSeconds(7200));
         redisTemplate.expire(gameKey, Duration.ofSeconds(7200));
         gameRedisService.initializeTimers(gameId, time);
         broadcastStart(gameId, u1, u2);
+
+        // Set initial turn timer for the white player (u1 goes first)
+        String whiteTimerKey = "chess:timer:game:" + gameId + ":turn:" + u1;
+        redisTemplate.opsForValue().set(whiteTimerKey, "ACTIVE", Duration.ofSeconds(time));
     }
 
     private void handleChatMessage(JSONObject json, int userId) throws Exception {
@@ -286,6 +306,9 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
+        String myTimerKey = "chess:timer:game:" + gameId + ":turn:" + userId;
+        redisTemplate.delete(myTimerKey);
+
         redisTemplate.opsForHash().put("chess:game:" + gameId, isWhite ? "time_white" : "time_black", String.valueOf(timeRemaining));
         redisTemplate.opsForHash().put("chess:game:" + gameId, "last_move_time", String.valueOf(now));
         gameRedisService.updateGameState(gameId, newFen, moveStr);
@@ -300,6 +323,10 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
         String status = gameService.getGameStatus(board);
         if (!status.equals("CONTINUE") && !status.equals("CHECK")) {
             handleEndGame(gameId, userId, status);
+        } else {
+            long oppTime = Long.parseLong(data.get(isWhite ? "time_black" : "time_white"));
+            String oppTimerKey = "chess:timer:game:" + gameId + ":turn:" + opponentId;
+            redisTemplate.opsForValue().set(oppTimerKey, "ACTIVE", Duration.ofSeconds(oppTime));
         }
     }
 
@@ -373,6 +400,23 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
         }
 
         gameRepository.processGameEnd(w, b, result, pgn);
+
+        // Delete turn timers
+        redisTemplate.delete("chess:timer:game:" + gameId + ":turn:" + w);
+        redisTemplate.delete("chess:timer:game:" + gameId + ":turn:" + b);
+
+        // Check if tournament game and link
+        if (data.containsKey("pairingId")) {
+            try {
+                int pairingId = Integer.parseInt(data.get("pairingId"));
+                Game latestGame = gameRepository.findLatestGameBetweenPlayers(w, b);
+                if (latestGame != null) {
+                    tournamentService.linkPairingGameAndSubmit(pairingId, latestGame, result);
+                }
+            } catch (Exception e) {
+                log.error("Failed to link tournament game and submit pairing result", e);
+            }
+        }
 
         JSONObject endMsg = new JSONObject().put("type", "GAME_OVER").put("result", result).put("reason", reason);
         sendToUser(w, endMsg.toString());
@@ -448,5 +492,13 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
             }
         }
         return null;
+    }
+
+    public void handleActiveTurnTimeout(String gameId, int userId) {
+        try {
+            handleEndGame(gameId, userId, "TIMEOUT");
+        } catch (Exception e) {
+            log.error("Failed to handle active turn timeout for game " + gameId, e);
+        }
     }
 }

@@ -107,14 +107,6 @@ public class AdminController {
         return ResponseEntity.ok(Map.of("message", "Tournament cancelled successfully"));
     }
 
-    @PostMapping("/tournaments/{tournamentId}/start")
-    public ResponseEntity<?> startTournament(
-            HttpServletRequest request,
-            @PathVariable Integer tournamentId) {
-        verifyAdmin(request);
-        tournamentService.startTournament(tournamentId);
-        return ResponseEntity.ok(Map.of("message", "Tournament started successfully"));
-    }
 
     @PostMapping("/tournaments/{tournamentId}/finish")
     public ResponseEntity<?> finishTournament(

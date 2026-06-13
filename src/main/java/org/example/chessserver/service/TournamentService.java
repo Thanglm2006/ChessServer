@@ -7,6 +7,14 @@ import org.example.chessserver.repository.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.json.JSONObject;
+import lombok.extern.slf4j.Slf4j;
+import org.example.chessserver.websocket.ChessWebSocketHandler;
+import java.time.Duration;
+
 import java.math.BigDecimal;
 import java.time.ZonedDateTime;
 import java.util.*;
@@ -14,6 +22,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TournamentService {
     private final TournamentRepository tournamentRepository;
     private final TournamentParticipantRepository participantRepository;
@@ -24,6 +33,12 @@ public class TournamentService {
     private final SwissPairingService swissPairingService;
     private final GameRepository gameRepository;
     private final GameMoveRepository gameMoveRepository;
+    private final StringRedisTemplate redisTemplate;
+
+    @Autowired
+    @Lazy
+    private ChessWebSocketHandler webSocketHandler;
+
 
     // --- User Actions ---
 
@@ -37,6 +52,44 @@ public class TournamentService {
         Tournament t = tournamentRepository.findById(tournamentId)
                 .orElseThrow(() -> new RuntimeException("Tournament not found"));
         return mapToTournamentDto(t);
+    }
+
+    public MyPairingDto getMyPairing(Integer tournamentId, Integer userId) {
+        TournamentRound latestRound = roundRepository.findFirstByTournamentTournamentIdOrderByRoundNumberDesc(tournamentId)
+                .orElse(null);
+        if (latestRound == null) {
+            return null;
+        }
+
+        TournamentPairing pairing = pairingRepository.findUserPairingInRound(userId, latestRound.getRoundId())
+                .orElse(null);
+        if (pairing == null) {
+            return null;
+        }
+
+        boolean isWhite = pairing.getWhitePlayer() != null && pairing.getWhitePlayer().getUserId().equals(userId);
+        User opponent = isWhite ? pairing.getBlackPlayer() : pairing.getWhitePlayer();
+        String opponentName = (opponent != null) ? opponent.getUsername() : "BYE";
+        Integer opponentRating = (opponent != null) ? eloRatingRepository.findById(opponent.getUserId()).map(EloRating::getRating).orElse(1200) : null;
+
+        String lobbyKey = "tournament:lobby:pairing:" + pairing.getPairingId();
+        Long timeLeft = redisTemplate.getExpire(lobbyKey);
+
+        Boolean iAmReady = isWhite ? pairing.getWhiteReady() : pairing.getBlackReady();
+        Boolean opponentReady = isWhite ? pairing.getBlackReady() : pairing.getWhiteReady();
+
+        return MyPairingDto.builder()
+                .pairingId(pairing.getPairingId())
+                .roundNumber(latestRound.getRoundNumber())
+                .opponentName(opponentName)
+                .opponentRating(opponentRating)
+                .myColor(isWhite ? "WHITE" : "BLACK")
+                .isBye(pairing.getIsBye())
+                .lobbyTimeLimitSeconds(300)
+                .lobbyTimeLeftSeconds(timeLeft != null && timeLeft >= 0 ? timeLeft : 0L)
+                .iAmReady(Boolean.TRUE.equals(iAmReady))
+                .opponentReady(Boolean.TRUE.equals(opponentReady))
+                .build();
     }
 
     public List<TournamentParticipantDto> getStandings(Integer tournamentId) {
@@ -216,7 +269,25 @@ public class TournamentService {
             // Check if there are more rounds
             int nextRoundNum = round.getRoundNumber() + 1;
             if (nextRoundNum <= round.getTournament().getTotalRounds()) {
-                generateRound(round.getTournament(), nextRoundNum);
+                String breakKey = "tournament:break:next-round:" + round.getTournament().getTournamentId();
+                redisTemplate.opsForValue().set(breakKey, String.valueOf(nextRoundNum), Duration.ofMinutes(10));
+
+                JSONObject breakMsg = new JSONObject()
+                        .put("type", "ROUND_BREAK_START")
+                        .put("tournamentId", round.getTournament().getTournamentId())
+                        .put("nextRoundNumber", nextRoundNum)
+                        .put("breakDurationSeconds", 600);
+
+                List<TournamentParticipant> participants = participantRepository.findByIdTournamentId(round.getTournament().getTournamentId());
+                for (TournamentParticipant p : participants) {
+                    if (webSocketHandler.isUserOnline(p.getUser().getUserId())) {
+                        try {
+                            webSocketHandler.sendToUser(p.getUser().getUserId(), breakMsg.toString());
+                        } catch (Exception e) {
+                            log.error("Failed to send break message to user " + p.getUser().getUserId(), e);
+                        }
+                    }
+                }
             } else {
                 // Auto finish tournament
                 round.getTournament().setStatus("FINISHED");
@@ -246,6 +317,28 @@ public class TournamentService {
                 if (participant != null) {
                     participant.setByeReceived(true);
                     participantRepository.save(participant);
+                }
+            } else {
+                p.setLobbyStartedAt(ZonedDateTime.now());
+                pairingRepository.save(p);
+                
+                String lobbyKey = "tournament:lobby:pairing:" + p.getPairingId();
+                redisTemplate.opsForValue().set(lobbyKey, "ACTIVE", Duration.ofMinutes(5));
+            }
+        }
+
+        // Broadcast ROUND_STARTED to all participants
+        List<TournamentParticipant> participants = participantRepository.findByIdTournamentId(tournament.getTournamentId());
+        for (TournamentParticipant part : participants) {
+            if (webSocketHandler.isUserOnline(part.getUser().getUserId())) {
+                try {
+                    JSONObject startMsg = new JSONObject()
+                            .put("type", "ROUND_STARTED")
+                            .put("tournamentId", tournament.getTournamentId())
+                            .put("roundNumber", roundNumber);
+                    webSocketHandler.sendToUser(part.getUser().getUserId(), startMsg.toString());
+                } catch (Exception e) {
+                    log.error("Failed to notify user " + part.getUser().getUserId() + " of round start", e);
                 }
             }
         }
@@ -446,5 +539,130 @@ public class TournamentService {
 
         // Submit result to advance round
         submitPairingResult(pairingId, result);
+    }
+
+    @Transactional
+    public void linkPairingGameAndSubmit(Integer pairingId, Game game, String result) {
+        TournamentPairing pairing = pairingRepository.findById(pairingId)
+                .orElseThrow(() -> new RuntimeException("Pairing not found"));
+        pairing.setGame(game);
+        pairingRepository.save(pairing);
+        submitPairingResult(pairingId, result);
+    }
+
+    @Transactional
+    public void joinLobby(Integer pairingId, Integer userId) {
+        TournamentPairing pairing = pairingRepository.findById(pairingId)
+                .orElseThrow(() -> new RuntimeException("Pairing not found"));
+
+        boolean isWhite = pairing.getWhitePlayer() != null && pairing.getWhitePlayer().getUserId().equals(userId);
+        boolean isBlack = pairing.getBlackPlayer() != null && pairing.getBlackPlayer().getUserId().equals(userId);
+
+        if (!isWhite && !isBlack) {
+            throw new RuntimeException("User not part of this pairing");
+        }
+
+        if (isWhite) {
+            pairing.setWhiteReady(true);
+        } else {
+            pairing.setBlackReady(true);
+        }
+        pairingRepository.save(pairing);
+
+        // Notify both players about readiness update
+        JSONObject updateMsg = new JSONObject()
+                .put("type", "TOURNAMENT_LOBBY_UPDATE")
+                .put("pairingId", pairingId)
+                .put("whiteReady", Boolean.TRUE.equals(pairing.getWhiteReady()))
+                .put("blackReady", Boolean.TRUE.equals(pairing.getBlackReady()));
+
+        try {
+            if (pairing.getWhitePlayer() != null) {
+                webSocketHandler.sendToUser(pairing.getWhitePlayer().getUserId(), updateMsg.toString());
+            }
+            if (pairing.getBlackPlayer() != null) {
+                webSocketHandler.sendToUser(pairing.getBlackPlayer().getUserId(), updateMsg.toString());
+            }
+        } catch (Exception e) {
+            log.error("Failed to send lobby update", e);
+        }
+
+        // If both are ready, start the match!
+        if (Boolean.TRUE.equals(pairing.getWhiteReady()) && Boolean.TRUE.equals(pairing.getBlackReady())) {
+            String lobbyKey = "tournament:lobby:pairing:" + pairingId;
+            redisTemplate.delete(lobbyKey);
+
+            String gameId = UUID.randomUUID().toString();
+            String matchType = pairing.getRound().getTournament().getTimeControl();
+
+            webSocketHandler.startGameDirectly(gameId, pairing.getWhitePlayer().getUserId(), pairing.getBlackPlayer().getUserId(), matchType, pairingId);
+
+            JSONObject startMsg = new JSONObject()
+                    .put("type", "TOURNAMENT_MATCH_START")
+                    .put("pairingId", pairingId)
+                    .put("gameId", gameId);
+
+            try {
+                if (pairing.getWhitePlayer() != null) {
+                    webSocketHandler.sendToUser(pairing.getWhitePlayer().getUserId(), startMsg.toString());
+                }
+                if (pairing.getBlackPlayer() != null) {
+                    webSocketHandler.sendToUser(pairing.getBlackPlayer().getUserId(), startMsg.toString());
+                }
+            } catch (Exception e) {
+                log.error("Failed to send match start message", e);
+            }
+        }
+    }
+
+    @Transactional
+    public void forfeitPairing(Integer pairingId) {
+        TournamentPairing pairing = pairingRepository.findById(pairingId)
+                .orElse(null);
+        if (pairing == null || pairing.getResult() != null) {
+            return;
+        }
+
+        boolean whiteReady = Boolean.TRUE.equals(pairing.getWhiteReady());
+        boolean blackReady = Boolean.TRUE.equals(pairing.getBlackReady());
+
+        String result;
+        if (!whiteReady && !blackReady) {
+            result = "0-0";
+        } else if (whiteReady) {
+            result = "1-0";
+        } else {
+            result = "0-1";
+        }
+
+        submitPairingResult(pairingId, result);
+
+        JSONObject overMsg = new JSONObject()
+                .put("type", "TOURNAMENT_PAIRING_FORFEITED")
+                .put("pairingId", pairingId)
+                .put("result", result);
+
+        try {
+            if (pairing.getWhitePlayer() != null) {
+                webSocketHandler.sendToUser(pairing.getWhitePlayer().getUserId(), overMsg.toString());
+            }
+            if (pairing.getBlackPlayer() != null) {
+                webSocketHandler.sendToUser(pairing.getBlackPlayer().getUserId(), overMsg.toString());
+            }
+        } catch (Exception e) {
+            log.error("Failed to notify users of pairing forfeit", e);
+        }
+    }
+
+    @Transactional
+    public void generateNextRoundAfterBreak(Integer tournamentId) {
+        Tournament t = tournamentRepository.findById(tournamentId)
+                .orElseThrow(() -> new RuntimeException("Tournament not found"));
+        TournamentRound latestRound = roundRepository.findFirstByTournamentTournamentIdOrderByRoundNumberDesc(tournamentId)
+                .orElse(null);
+        int nextRoundNum = (latestRound != null) ? latestRound.getRoundNumber() + 1 : 1;
+        if (nextRoundNum <= t.getTotalRounds()) {
+            generateRound(t, nextRoundNum);
+        }
     }
 }

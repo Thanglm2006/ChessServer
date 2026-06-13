@@ -1,4 +1,3 @@
-
 -- 1. Cài đặt Extension tìm kiếm nhanh
 CREATE EXTENSION IF NOT EXISTS pgroonga;
 
@@ -9,6 +8,8 @@ CREATE TABLE IF NOT EXISTS users (
     email VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL, -- Hash từ Backend (Bcrypt/Argon2)
     country_code VARCHAR(2) DEFAULT 'VN',
+    role VARCHAR(20) DEFAULT 'ROLE_USER',
+    is_banned BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -147,11 +148,7 @@ JOIN elo_ratings e ON u.user_id = e.user_id
 WHERE e.games_played > 0
 ORDER BY e.rating DESC;
 
--- 9. ADMIN & TOURNAMENT EXTENSIONS
-
-ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'ROLE_USER';
-ALTER TABLE users ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT FALSE;
-
+-- 9. ADMIN & TOURNAMENT TABLES
 CREATE TABLE IF NOT EXISTS tournaments (
     tournament_id SERIAL PRIMARY KEY,
     tournament_name VARCHAR(255) NOT NULL,
@@ -174,6 +171,7 @@ CREATE TABLE IF NOT EXISTS tournament_participants (
     buchholz NUMERIC(6,2) DEFAULT 0,
     sonneborn_berger NUMERIC(6,2) DEFAULT 0,
     bye_received BOOLEAN DEFAULT FALSE,
+    reminder_sent BOOLEAN DEFAULT FALSE,
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tournament_id, user_id)
 );
@@ -194,7 +192,10 @@ CREATE TABLE IF NOT EXISTS tournament_pairings (
     black_player_id INTEGER REFERENCES users(user_id),
     game_id INTEGER REFERENCES games(game_id),
     result VARCHAR(10),
-    is_bye BOOLEAN DEFAULT FALSE
+    is_bye BOOLEAN DEFAULT FALSE,
+    white_ready BOOLEAN DEFAULT FALSE,
+    black_ready BOOLEAN DEFAULT FALSE,
+    lobby_started_at TIMESTAMP WITH TIME ZONE
 );
 
 CREATE TABLE IF NOT EXISTS game_moves (
