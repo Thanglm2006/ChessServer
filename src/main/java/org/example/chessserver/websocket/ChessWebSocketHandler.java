@@ -72,26 +72,38 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-        JSONObject json = new JSONObject(message.getPayload());
-        String type = json.getString("type");
-        int userId = getUserIdBySession(session);
-        if (userId == -1) return;
+        try {
+            JSONObject json = new JSONObject(message.getPayload());
+            String type = json.getString("type");
+            int userId = getUserIdBySession(session);
+            if (userId == -1) return;
 
-        switch (type) {
-            case "READY" -> handleReady(json.getString("gameId"), userId);
-            case "REJECT_MATCH" -> handleMatchReject(json.getString("gameId"), userId);
-            case "MOVE" -> handleMove(json, userId);
-            case "DRAW_OFFER" -> handleDrawOffer(json.getString("gameId"), userId);
-            case "DRAW_RESPONSE" -> handleDrawResponse(json, userId);
-            case "SURRENDER", "RESIGN" -> handleEndGame(json.getString("gameId"), userId, "RESIGN");
-            case "CREATE_ROOM" -> handleCreateRoom(json, userId);
-            case "JOIN_ROOM" -> handleJoinRoom(json.getString("code"), userId);
-            case "CHAT_MESSAGE" -> handleChatMessage(json, userId);
-            case "REMATCH_OFFER" -> handleRematchOffer(json.getString("gameId"), userId);
-            case "REMATCH_RESPONSE" -> handleRematchResponse(json, userId);
-            case "INVITE_FRIEND" -> handleInviteFriend(json, userId);
-            case "ACCEPT_INVITE" -> handleAcceptInvite(json.getInt("hostId"), userId);
-            case "TOURNAMENT_JOIN_LOBBY" -> tournamentService.joinLobby(json.getInt("pairingId"), userId);
+            switch (type) {
+                case "READY" -> handleReady(json.getString("gameId"), userId);
+                case "REJECT_MATCH" -> handleMatchReject(json.getString("gameId"), userId);
+                case "MOVE" -> handleMove(json, userId);
+                case "DRAW_OFFER" -> handleDrawOffer(json.getString("gameId"), userId);
+                case "DRAW_RESPONSE" -> handleDrawResponse(json, userId);
+                case "SURRENDER", "RESIGN" -> handleEndGame(json.getString("gameId"), userId, "RESIGN");
+                case "CREATE_ROOM" -> handleCreateRoom(json, userId);
+                case "JOIN_ROOM" -> handleJoinRoom(json.getString("code"), userId);
+                case "CHAT_MESSAGE" -> handleChatMessage(json, userId);
+                case "REMATCH_OFFER" -> handleRematchOffer(json.getString("gameId"), userId);
+                case "REMATCH_RESPONSE" -> handleRematchResponse(json, userId);
+                case "INVITE_FRIEND" -> handleInviteFriend(json, userId);
+                case "ACCEPT_INVITE" -> handleAcceptInvite(json.getInt("hostId"), userId);
+                case "TOURNAMENT_JOIN_LOBBY" -> tournamentService.joinLobby(json.getInt("pairingId"), userId);
+            }
+        } catch (Exception e) {
+            log.error("Error handling web socket text message", e);
+            try {
+                session.sendMessage(new TextMessage(new JSONObject()
+                        .put("type", "ERROR")
+                        .put("message", e.getMessage() != null ? e.getMessage() : "Internal error")
+                        .toString()));
+            } catch (Exception ex) {
+                log.error("Failed to send error message to web socket", ex);
+            }
         }
     }
 

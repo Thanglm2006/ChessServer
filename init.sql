@@ -211,3 +211,6 @@ CREATE TABLE IF NOT EXISTS game_moves (
 -- 10. Database Migration/Patches for existing installations
 ALTER TABLE tournament_pairings ADD COLUMN IF NOT EXISTS white_ready BOOLEAN DEFAULT FALSE;
 ALTER TABLE tournament_pairings ADD COLUMN IF NOT EXISTS black_ready BOOLEAN DEFAULT FALSE;
+ALTER TABLE tournament_pairings ADD COLUMN IF NOT EXISTS lobby_started_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE tournament_pairings ADD COLUMN IF NOT EXISTS is_bye BOOLEAN DEFAULT FALSE;
+ALTER TABLE tournament_rounds ADD COLUMN IF NOT EXISTS ended_at TIMESTAMP WITH TIME ZONE;

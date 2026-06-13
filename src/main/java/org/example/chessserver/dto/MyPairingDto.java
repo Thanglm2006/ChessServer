@@ -1,5 +1,6 @@
 package org.example.chessserver.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -18,6 +19,10 @@ public class MyPairingDto {
     private Boolean isBye;
     private Integer lobbyTimeLimitSeconds;
     private Long lobbyTimeLeftSeconds;
+
+    @JsonProperty("iAmReady")
     private Boolean iAmReady;
+
+    @JsonProperty("opponentReady")
     private Boolean opponentReady;
 }
