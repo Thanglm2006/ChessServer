@@ -718,7 +718,7 @@ public class TournamentService {
     @Transactional
     public void recoverStuckTournaments() {
         log.info("Starting recovery check for stuck tournaments, rounds, and pairings...");
-        ZonedDateTime now = ZonedDateTime.now();
+        ZonedDateTime now = ZonedDateTime.now(java.time.ZoneOffset.UTC);
         List<Tournament> ongoingTournaments = tournamentRepository.findAll().stream()
                 .filter(t -> "ONGOING".equals(t.getStatus()))
                 .collect(Collectors.toList());
@@ -736,7 +736,7 @@ public class TournamentService {
                                 String breakKey = "tournament:break:next-round:" + t.getTournamentId();
                                 Boolean hasBreakKey = redisTemplate.hasKey(breakKey);
                                 if (hasBreakKey == null || !hasBreakKey) {
-                                    ZonedDateTime endedAt = latestRound.getEndedAt();
+                                    ZonedDateTime endedAt = latestRound.getEndedAt().withZoneSameLocal(java.time.ZoneOffset.UTC);
                                     long minutesPassed = Duration.between(endedAt, now).toMinutes();
                                     if (minutesPassed >= 10) {
                                         log.info("Recovery: Break ended while offline for tournament {}. Starting next round...", t.getTournamentId());
@@ -759,7 +759,7 @@ public class TournamentService {
                                     String lobbyKey = "tournament:lobby:pairing:" + p.getPairingId();
                                     Boolean hasLobbyKey = redisTemplate.hasKey(lobbyKey);
                                     if (hasLobbyKey == null || !hasLobbyKey) {
-                                        ZonedDateTime startedAt = p.getLobbyStartedAt();
+                                        ZonedDateTime startedAt = p.getLobbyStartedAt().withZoneSameLocal(java.time.ZoneOffset.UTC);
                                         long secondsPassed = Duration.between(startedAt, now).getSeconds();
                                         if (secondsPassed >= 300) {
                                             log.info("Recovery: Lobby check-in expired while offline for pairing {}. Forfeiting...", p.getPairingId());
