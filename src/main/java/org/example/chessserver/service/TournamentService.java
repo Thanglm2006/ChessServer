@@ -220,7 +220,11 @@ public class TournamentService {
 
         List<TournamentParticipant> participants = participantRepository.findByIdTournamentId(tournamentId);
         if (participants.size() < 2) {
-            throw new RuntimeException("Need at least 2 participants to start tournament");
+            t.setStatus("FINISHED");
+            tournamentRepository.save(t);
+            log.warn("Tournament {} (ID: {}) auto-finished because it has less than 2 participants (found {}).", 
+                    t.getTournamentName(), t.getTournamentId(), participants.size());
+            return;
         }
 
         t.setStatus("ONGOING");
