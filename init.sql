@@ -207,3 +207,7 @@ CREATE TABLE IF NOT EXISTS game_moves (
     evaluation FLOAT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 10. Database Migration/Patches for existing installations
+ALTER TABLE tournament_pairings ADD COLUMN IF NOT EXISTS white_ready BOOLEAN DEFAULT FALSE;
+ALTER TABLE tournament_pairings ADD COLUMN IF NOT EXISTS black_ready BOOLEAN DEFAULT FALSE;

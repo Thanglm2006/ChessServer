@@ -581,7 +581,7 @@ public class TournamentService {
         } else {
             pairing.setBlackReady(true);
         }
-        pairingRepository.save(pairing);
+        pairingRepository.saveAndFlush(pairing);
 
         // Notify both players about readiness update
         JSONObject updateMsg = new JSONObject()
