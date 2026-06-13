@@ -55,6 +55,17 @@ public class TournamentService {
     }
 
     public MyPairingDto getMyPairing(Integer tournamentId, Integer userId) {
+        String breakKey = "tournament:break:next-round:" + tournamentId;
+        String nextRoundStr = (String) redisTemplate.opsForValue().get(breakKey);
+        Long breakTimeLeft = redisTemplate.getExpire(breakKey);
+        if (nextRoundStr != null && breakTimeLeft != null && breakTimeLeft >= 0) {
+            return MyPairingDto.builder()
+                    .inBreak(true)
+                    .breakTimeLeftSeconds(breakTimeLeft)
+                    .roundNumber(Integer.parseInt(nextRoundStr))
+                    .build();
+        }
+
         TournamentRound latestRound = roundRepository.findFirstByTournamentTournamentIdOrderByRoundNumberDesc(tournamentId)
                 .orElse(null);
         if (latestRound == null) {
@@ -111,6 +122,28 @@ public class TournamentService {
 
         Tournament t = tournamentRepository.findById(tournamentId)
                 .orElseThrow(() -> new RuntimeException("Tournament not found"));
+
+        // Check for overlapping tournaments
+        List<TournamentParticipant> joined = participantRepository.findByUserId(userId);
+        for (TournamentParticipant p : joined) {
+            Tournament joinedT = p.getTournament();
+            if ("FINISHED".equals(joinedT.getStatus())) {
+                continue;
+            }
+            if (t.getStartTime() != null && joinedT.getStartTime() != null) {
+                int duration1 = t.getTotalRounds() * (2 * getMinutesFromTimeControl(t.getTimeControl()) + 10) + 15;
+                int duration2 = joinedT.getTotalRounds() * (2 * getMinutesFromTimeControl(joinedT.getTimeControl()) + 10) + 15;
+
+                ZonedDateTime start1 = t.getStartTime();
+                ZonedDateTime end1 = start1.plusMinutes(duration1);
+                ZonedDateTime start2 = joinedT.getStartTime();
+                ZonedDateTime end2 = start2.plusMinutes(duration2);
+
+                if (start1.isBefore(end2) && start2.isBefore(end1)) {
+                    throw new RuntimeException("Bạn đã đăng ký tham gia giải đấu '" + joinedT.getTournamentName() + "' có thời gian thi đấu trùng khớp");
+                }
+            }
+        }
 
         if (!"REGISTERING".equals(t.getStatus())) {
             throw new RuntimeException("Tournament is not open for registration");
@@ -746,6 +779,21 @@ public class TournamentService {
                 log.error("Failed to recover tournament {}", t.getTournamentId(), e);
             }
         }
-        log.info("Recovery check complete.");
+    }
+
+    private int getMinutesFromTimeControl(String timeControl) {
+        try {
+            if (timeControl == null || timeControl.isEmpty()) return 10;
+            String[] parts = timeControl.split("[^0-9]");
+            for (String part : parts) {
+                if (!part.isEmpty()) {
+                    return Integer.parseInt(part);
+                }
+            }
+        } catch (Exception e) {
+            // fallback
+        }
+        return 10;
     }
 }
+

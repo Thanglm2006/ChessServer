@@ -14,4 +14,7 @@ public interface TournamentParticipantRepository extends JpaRepository<Tournamen
 
     @Query("SELECT tp FROM TournamentParticipant tp JOIN FETCH tp.user u WHERE tp.id.tournamentId = :tournamentId ORDER BY tp.currentScore DESC, tp.buchholz DESC, tp.sonnebornBerger DESC, tp.initialRating DESC")
     List<TournamentParticipant> findStandings(@Param("tournamentId") Integer tournamentId);
+
+    @Query("SELECT tp FROM TournamentParticipant tp WHERE tp.id.userId = :userId")
+    List<TournamentParticipant> findByUserId(@Param("userId") Integer userId);
 }

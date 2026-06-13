@@ -21,6 +21,8 @@ public class MyPairingDto {
     private Long lobbyTimeLeftSeconds;
     private String result;
     private String gameId;
+    private Boolean inBreak;
+    private Long breakTimeLeftSeconds;
 
     @JsonProperty("iAmReady")
     private Boolean iAmReady;
