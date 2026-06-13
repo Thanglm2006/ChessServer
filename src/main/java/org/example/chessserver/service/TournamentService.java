@@ -89,6 +89,8 @@ public class TournamentService {
                 .lobbyTimeLeftSeconds(timeLeft != null && timeLeft >= 0 ? timeLeft : 0L)
                 .iAmReady(Boolean.TRUE.equals(iAmReady))
                 .opponentReady(Boolean.TRUE.equals(opponentReady))
+                .result(pairing.getResult())
+                .gameId(pairing.getGame() != null ? pairing.getGame().getGameId() : null)
                 .build();
     }
 
