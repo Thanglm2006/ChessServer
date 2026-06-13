@@ -101,7 +101,7 @@ public class TournamentService {
                 .iAmReady(Boolean.TRUE.equals(iAmReady))
                 .opponentReady(Boolean.TRUE.equals(opponentReady))
                 .result(pairing.getResult())
-                .gameId(pairing.getGame() != null ? pairing.getGame().getGameId() : null)
+                .gameId(pairing.getGame() != null ? String.valueOf(pairing.getGame().getGameId()) : null)
                 .build();
     }
 
