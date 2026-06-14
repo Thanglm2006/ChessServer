@@ -16,8 +16,9 @@ SECRET_CODE = "ADMIN_SECRET_KEY_2026"
 TOURNAMENT_ID = 16
 
 BOT_BASE_NAMES = [
-    "AlphaZero", "DeepBlue", "Stockfish", "Leela", "Ryka",
-    "Komodo", "Houdini", "Fritz", "Shredder", "Crafty"
+    "MinhDuc", "ThanhTung", "HoangNam", "QuangHuy", "GiaBach",
+    "DucManh", "TuanAnh", "VanPhong", "NgocLinh", "PhuongNam",
+    "HaiDang", "HoangLong", "VietAnh", "BaoLam", "QuocAnh"
 ]
 
 class ChessBotClient:
