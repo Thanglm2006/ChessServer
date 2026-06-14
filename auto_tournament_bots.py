@@ -77,11 +77,24 @@ class ChessBotClient:
             self.log(f"Connection error during login: {e}")
             return
 
-        # 3. Start WebSocket Thread
+        # 3. Join/Register Tournament
+        try:
+            join_headers = {"Authorization": f"Bearer {self.token}"}
+            res_join = requests.post(f"{API_BASE}/tournaments/{TOURNAMENT_ID}/join", json={}, headers=join_headers)
+            if res_join.status_code == 200:
+                self.log(f"Registered/Joined tournament {TOURNAMENT_ID} successfully.")
+            elif "already registered" in res_join.text.lower():
+                self.log(f"Already registered for tournament {TOURNAMENT_ID}.")
+            else:
+                self.log(f"Failed to join tournament: {res_join.status_code} - {res_join.text}")
+        except Exception as e:
+            self.log(f"Connection error during joining tournament: {e}")
+
+        # 4. Start WebSocket Thread
         ws_thread = threading.Thread(target=self.run_ws_loop, daemon=True)
         ws_thread.start()
 
-        # 4. Start Lobby Polling Thread
+        # 5. Start Lobby Polling Thread
         poll_thread = threading.Thread(target=self.run_lobby_polling_loop, daemon=True)
         poll_thread.start()
 
@@ -89,7 +102,6 @@ class ChessBotClient:
         while self.is_running:
             self.log(f"Connecting to WebSocket: {WS_BASE}")
             try:
-                # Add token as query param
                 ws_url = f"{WS_BASE}?token={self.token}"
                 self.ws = websocket.WebSocketApp(
                     ws_url,
@@ -185,7 +197,7 @@ class ChessBotClient:
                 return
                 
             move_data = res.json()
-            ai_move_uci = move_data.get("ai_move") or move_data.get("ai_move_san") # fallback to SAN if uci isn't found
+            ai_move_uci = move_data.get("ai_move") or move_data.get("ai_move_san")
             new_fen = move_data.get("fen")
             
             if not ai_move_uci:
@@ -224,12 +236,17 @@ class ChessBotClient:
                     headers = {"Authorization": f"Bearer {self.token}"}
                     res = requests.get(f"{API_BASE}/tournaments/{TOURNAMENT_ID}/my-pairing", headers=headers, timeout=5)
                     if res.status_code == 200:
+                        # Handle case where server returns 200 OK but empty body (no pairing yet)
+                        if not res.text.strip():
+                            time.sleep(5)
+                            continue
+                            
                         pairing = res.json()
                         p_id = pairing.get("pairingId")
                         
                         if p_id:
                             # Verify if we are already ready in this pairing
-                            is_white = pairing.get("whitePlayerId") == pairing.get("myId") # check my side
+                            is_white = pairing.get("whitePlayerId") == pairing.get("myId")
                             i_am_ready = pairing.get("whiteReady") if is_white else pairing.get("blackReady")
                             
                             if not i_am_ready:
@@ -244,12 +261,11 @@ class ChessBotClient:
                                 else:
                                     self.log("WebSocket not ready yet to register lobby readiness.")
                     elif res.status_code == 400:
-                        # Common when round has not started yet or registration is ongoing
                         pass
                 except Exception as e:
                     self.log(f"Error polling lobby status: {e}")
 
-            time.sleep(5) # Poll every 5 seconds
+            time.sleep(5)
 
 def main():
     print("=" * 60)
@@ -275,7 +291,7 @@ def main():
     print(f"Starting {len(bots)} bot threads...")
     for bot in bots:
         bot.start()
-        time.sleep(1) # stagger startups
+        time.sleep(1)
         
     print("\nBots are running! Keep this script alive to let them play.")
     try:
