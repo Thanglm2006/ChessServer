@@ -14,6 +14,11 @@ import org.example.chessserver.repository.TournamentPairingRepository;
 import org.example.chessserver.repository.TournamentRepository;
 import org.example.chessserver.repository.TournamentRoundRepository;
 import org.springframework.stereotype.Service;
+import com.github.bhlangonijr.chesslib.Board;
+import com.github.bhlangonijr.chesslib.move.Move;
+import com.github.bhlangonijr.chesslib.move.MoveList;
+import java.util.ArrayList;
+
 
 import java.util.List;
 import java.util.Map;
@@ -100,8 +105,8 @@ public class ReplayService {
     }
 
     public List<GameMoveDto> getGameMoves(Integer gameId) {
-        getGame(gameId);
-        return gameMoveRepository.findByGameGameIdOrderByMoveNumberAsc(gameId).stream()
+        GameDto gameDto = getGame(gameId);
+        List<GameMoveDto> moves = gameMoveRepository.findByGameGameIdOrderByMoveNumberAsc(gameId).stream()
                 .map(m -> GameMoveDto.builder()
                         .moveId(m.getMoveId())
                         .gameId(m.getGame().getGameId())
@@ -112,6 +117,42 @@ public class ReplayService {
                         .createdAt(m.getCreatedAt())
                         .build())
                 .collect(Collectors.toList());
+
+        if (moves.isEmpty() && gameDto.getPgnData() != null && !gameDto.getPgnData().trim().isEmpty()) {
+            try {
+                Board board = new Board();
+                MoveList moveList = new MoveList();
+                String[] pgnMoves = gameDto.getPgnData().split("\\s+");
+                for (String moveStr : pgnMoves) {
+                    if (moveStr.trim().isEmpty()) continue;
+                    String uci = moveStr.toUpperCase();
+                    Move move = new Move(uci, board.getSideToMove());
+                    if (board.legalMoves().contains(move)) {
+                        moveList.add(move);
+                        board.doMove(move);
+                    } else {
+                        break;
+                    }
+                }
+                
+                String[] sanArray = moveList.toSanArray();
+                board = new Board();
+                for (int i = 0; i < moveList.size(); i++) {
+                    Move m = moveList.get(i);
+                    board.doMove(m);
+                    moves.add(GameMoveDto.builder()
+                            .gameId(gameId)
+                            .moveNumber(i + 1)
+                            .sanMove(sanArray[i])
+                            .fenAfterMove(board.getFen())
+                            .evaluation(null)
+                            .build());
+                }
+            } catch (Exception e) {
+                // Ignore parsing errors, return empty list
+            }
+        }
+        return moves;
     }
 
     public Map<String, Object> getGameAnalysis(Integer gameId) {
