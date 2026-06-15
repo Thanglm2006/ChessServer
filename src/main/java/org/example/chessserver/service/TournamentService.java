@@ -828,24 +828,26 @@ public class TournamentService {
                                         Map<String, String> gameData = gameRedisService.getGameData(gameId);
                                         if (gameData != null && !gameData.isEmpty()) {
                                             log.info("Recovery: Game ID {} is active for pairing {}. Checking turn timeout...", gameId, p.getPairingId());
-                                            String turnStr = gameData.get("turn");
-                                            if (turnStr != null) {
-                                                int turnUserId = Integer.parseInt(turnStr);
-                                                boolean isWhiteTurn = (p.getWhitePlayer() != null && p.getWhitePlayer().getUserId().equals(turnUserId));
-                                                String timeRemainingStr = gameData.get(isWhiteTurn ? "time_white" : "time_black");
-                                                if (timeRemainingStr != null) {
-                                                    long timeRemaining = Long.parseLong(timeRemainingStr);
-                                                    long nowMillis = System.currentTimeMillis();
-                                                    String lastMoveTimeStr = gameData.getOrDefault("last_move_time", String.valueOf(nowMillis));
-                                                    long lastMoveTime = Long.parseLong(lastMoveTimeStr);
-                                                    long secondsElapsed = (nowMillis - lastMoveTime) / 1000;
-                                                    
-                                                    log.info("Recovery: Game ID {}, Turn User ID: {}, timeRemaining: {}s, secondsElapsed: {}s",
-                                                            gameId, turnUserId, timeRemaining, secondsElapsed);
-                                                    
-                                                    if (secondsElapsed >= timeRemaining + 15) {
-                                                        log.warn("Recovery: Game ID {} detected turn timeout for user {}. Forfeiting game...", gameId, turnUserId);
-                                                        webSocketHandler.handleActiveTurnTimeout(gameId, turnUserId);
+                                            String fen = gameData.get("fen");
+                                            if (fen != null) {
+                                                boolean isWhiteTurn = fen.contains(" w ");
+                                                Integer turnUserId = isWhiteTurn ? (p.getWhitePlayer() != null ? p.getWhitePlayer().getUserId() : null) : (p.getBlackPlayer() != null ? p.getBlackPlayer().getUserId() : null);
+                                                if (turnUserId != null) {
+                                                    String timeRemainingStr = gameData.get(isWhiteTurn ? "time_white" : "time_black");
+                                                    if (timeRemainingStr != null) {
+                                                        long timeRemaining = Long.parseLong(timeRemainingStr);
+                                                        long nowMillis = System.currentTimeMillis();
+                                                        String lastMoveTimeStr = gameData.getOrDefault("last_move_time", String.valueOf(nowMillis));
+                                                        long lastMoveTime = Long.parseLong(lastMoveTimeStr);
+                                                        long secondsElapsed = (nowMillis - lastMoveTime) / 1000;
+                                                        
+                                                        log.info("Recovery: Game ID {}, Turn User ID: {}, timeRemaining: {}s, secondsElapsed: {}s",
+                                                                gameId, turnUserId, timeRemaining, secondsElapsed);
+                                                        
+                                                        if (secondsElapsed >= timeRemaining + 15) {
+                                                            log.warn("Recovery: Game ID {} detected turn timeout for user {}. Forfeiting game...", gameId, turnUserId);
+                                                            webSocketHandler.handleActiveTurnTimeout(gameId, turnUserId);
+                                                        }
                                                     }
                                                 }
                                             }

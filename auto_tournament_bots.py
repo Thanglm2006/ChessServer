@@ -14,6 +14,7 @@ WS_BASE = "wss://chess.caelestial.store/ws"
 AI_API_BASE = "http://localhost:3210/api"
 SECRET_CODE = "ADMIN_SECRET_KEY_2026"
 TOURNAMENT_ID = 16
+BOT_DIFFICULTY = 1  # 1: Direct Policy (Instant, near 0 CPU), 2: 100 MCTS sims, 3: 300 MCTS sims
 
 BOT_BASE_NAMES = [
     "MinhDuc", "ThanhTung", "HoangNam", "QuangHuy", "GiaBach",
@@ -189,7 +190,7 @@ class ChessBotClient:
             payload = {
                 "fen": self.current_fen,
                 "model": self.model,
-                "difficulty": 3
+                "difficulty": BOT_DIFFICULTY
             }
             res = requests.post(f"{AI_API_BASE}/move", json=payload, timeout=10)
 
