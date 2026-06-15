@@ -310,13 +310,13 @@ public class TournamentService {
             int nextRoundNum = round.getRoundNumber() + 1;
             if (nextRoundNum <= round.getTournament().getTotalRounds()) {
                 String breakKey = "tournament:break:next-round:" + round.getTournament().getTournamentId();
-                redisTemplate.opsForValue().set(breakKey, String.valueOf(nextRoundNum), Duration.ofMinutes(10));
+                redisTemplate.opsForValue().set(breakKey, String.valueOf(nextRoundNum), Duration.ofSeconds(30));
 
                 JSONObject breakMsg = new JSONObject()
                         .put("type", "ROUND_BREAK_START")
                         .put("tournamentId", round.getTournament().getTournamentId())
                         .put("nextRoundNumber", nextRoundNum)
-                        .put("breakDurationSeconds", 600);
+                        .put("breakDurationSeconds", 30);
 
                 List<TournamentParticipant> participants = participantRepository.findByIdTournamentId(round.getTournament().getTournamentId());
                 for (TournamentParticipant p : participants) {
@@ -363,7 +363,7 @@ public class TournamentService {
                 pairingRepository.save(p);
                 
                 String lobbyKey = "tournament:lobby:pairing:" + p.getPairingId();
-                redisTemplate.opsForValue().set(lobbyKey, "ACTIVE", Duration.ofMinutes(5));
+                redisTemplate.opsForValue().set(lobbyKey, "ACTIVE", Duration.ofSeconds(30));
             }
         }
 
@@ -754,15 +754,16 @@ public class TournamentService {
                             
                             if (hasBreakKey == null || !hasBreakKey) {
                                 ZonedDateTime endedAt = latestRound.getEndedAt().withZoneSameInstant(java.time.ZoneOffset.UTC);
-                                long minutesPassed = Duration.between(endedAt, now).toMinutes();
-                                log.info("Recovery: Tournament {} break ended: minutesPassed = {}, endedAt = {}, now = {}", 
-                                        t.getTournamentId(), minutesPassed, endedAt, now);
+
+                                long secondsPassedBreak = Duration.between(endedAt, now).getSeconds();
+                                log.info("Recovery: Tournament {} break ended: secondsPassedBreak = {}, endedAt = {}, now = {}", 
+                                        t.getTournamentId(), secondsPassedBreak, endedAt, now);
                                         
-                                if (minutesPassed >= 10) {
+                                if (secondsPassedBreak >= 30) {
                                     log.info("Recovery: Break ended while offline for tournament {}. Starting next round...", t.getTournamentId());
                                     generateNextRoundAfterBreak(t.getTournamentId());
                                 } else {
-                                    long remainingSeconds = 600 - Duration.between(endedAt, now).getSeconds();
+                                    long remainingSeconds = 30 - secondsPassedBreak;
                                     if (remainingSeconds > 0) {
                                         log.info("Recovery: Re-scheduling break for tournament {} ({} seconds remaining)", t.getTournamentId(), remainingSeconds);
                                         redisTemplate.opsForValue().set(breakKey, String.valueOf(nextRoundNum), Duration.ofSeconds(remainingSeconds));
@@ -803,17 +804,18 @@ public class TournamentService {
                                         log.info("Recovery: Pairing ID {} startedAt (UTC) = {}, now (UTC) = {}, secondsPassed = {}", 
                                                 p.getPairingId(), startedAt, now, secondsPassed);
 
-                                        if (secondsPassed >= 300) {
+                                        if (secondsPassed >= 30) {
                                             log.info("Recovery: Lobby check-in expired while offline for pairing {}. Forfeiting...", p.getPairingId());
                                             forfeitPairing(p.getPairingId());
                                         } else {
-                                            long remainingSeconds = 300 - secondsPassed;
+                                            long remainingSeconds = 30 - secondsPassed;
                                             log.info("Recovery: Re-scheduling lobby for pairing {} ({} seconds remaining)", p.getPairingId(), remainingSeconds);
                                             redisTemplate.opsForValue().set(lobbyKey, "ACTIVE", Duration.ofSeconds(remainingSeconds));
                                         }
                                     }
                                 } else {
                                     // Both players are ready, meaning the game has started (or should be active)
+
                                     String gameId = null;
                                     if (p.getWhitePlayer() != null) {
                                         gameId = redisTemplate.opsForValue().get("user:current_game:" + p.getWhitePlayer().getUserId());

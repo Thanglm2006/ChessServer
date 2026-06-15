@@ -152,7 +152,7 @@ class ChessBotClient:
                 new_fen = data.get("fen")
                 self.log(f"Opponent moved: {opp_move}")
                 self.current_fen = new_fen
-                self.last_move = opp_move
+                self.last_move = opp_move.lower() if opp_move else ""
                 
                 # Trigger bot turn
                 self.make_ai_move()
@@ -188,11 +188,12 @@ class ChessBotClient:
         try:
             payload = {
                 "fen": self.current_fen,
-                "player_move": self.last_move,
+                "player_move": self.last_move.lower() if self.last_move else "",
                 "model": self.model,
                 "difficulty": 3
             }
             res = requests.post(f"{AI_API_BASE}/move", json=payload, timeout=10)
+
             if res.status_code != 200:
                 self.log(f"AI Server returned error {res.status_code}: {res.text}")
                 return
