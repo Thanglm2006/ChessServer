@@ -121,8 +121,8 @@ class ChessBotClient:
     def on_open(self, ws):
         self.log("WebSocket connection established.")
 
-    def on_close(self, ws, close_status_code, close_msg):
-        self.log(f"WebSocket closed (Code: {close_status_code}, Msg: {close_msg}).")
+    def on_close(self, ws, *args, **kwargs):
+        self.log(f"WebSocket closed. Args: {args}, Kwargs: {kwargs}")
         self.ws = None
 
     def on_error(self, ws, error):
@@ -213,7 +213,7 @@ class ChessBotClient:
                 "gameId": self.game_id,
                 "move": ai_move_uci
             }
-            if self.ws and self.ws.keep_running:
+            if self.ws and getattr(self.ws, 'sock', None) is not None:
                 self.ws.send(json.dumps(move_payload))
                 self.current_fen = new_fen
                 self.last_move = ai_move_uci
@@ -256,7 +256,7 @@ class ChessBotClient:
                                     "type": "TOURNAMENT_JOIN_LOBBY",
                                     "pairingId": p_id
                                 }
-                                if self.ws and self.ws.keep_running:
+                                if self.ws and getattr(self.ws, 'sock', None) is not None:
                                     self.ws.send(json.dumps(join_payload))
                                     self.active_pairing_id = p_id
                                 else:

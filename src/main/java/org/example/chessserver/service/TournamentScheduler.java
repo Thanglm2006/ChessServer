@@ -30,8 +30,10 @@ public class TournamentScheduler {
 
     @Scheduled(fixedDelay = 10000) // check every 10 seconds
     public void autoRecoverTournaments() {
+        log.info("TournamentScheduler: Starting autoRecoverTournaments...");
         try {
             tournamentService.recoverStuckTournaments();
+            log.info("TournamentScheduler: Completed autoRecoverTournaments.");
         } catch (Exception e) {
             log.error("Failed to execute periodic tournament recovery", e);
         }
@@ -40,11 +42,13 @@ public class TournamentScheduler {
     @Scheduled(fixedDelay = 60000) // check every minute
     public void autoStartTournaments() {
         ZonedDateTime now = ZonedDateTime.now();
+        log.info("TournamentScheduler: Checking for upcoming tournaments to auto-start at: {}", now);
         List<Tournament> upcoming = tournamentRepository.findAll().stream()
                 .filter(t -> "REGISTERING".equals(t.getStatus()))
                 .filter(t -> t.getStartTime() != null && t.getStartTime().isBefore(now))
                 .toList();
 
+        log.info("TournamentScheduler: Found {} tournaments to start.", upcoming.size());
         for (Tournament t : upcoming) {
             try {
                 log.info("Auto-starting tournament: {} (ID: {})", t.getTournamentName(), t.getTournamentId());
