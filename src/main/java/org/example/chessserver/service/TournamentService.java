@@ -812,38 +812,56 @@ public class TournamentService {
                                             redisTemplate.opsForValue().set(lobbyKey, "ACTIVE", Duration.ofSeconds(remainingSeconds));
                                         }
                                     }
-                                } else if (p.getGame() != null) {
-                                    String gameId = String.valueOf(p.getGame().getGameId());
-                                    Map<String, String> gameData = gameRedisService.getGameData(gameId);
-                                    if (gameData != null && !gameData.isEmpty()) {
-                                        log.info("Recovery: Game ID {} is active. Checking turn timeout...", gameId);
-                                        String turnStr = gameData.get("turn");
-                                        if (turnStr != null) {
-                                            int turnUserId = Integer.parseInt(turnStr);
-                                            boolean isWhiteTurn = (p.getWhitePlayer() != null && p.getWhitePlayer().getUserId().equals(turnUserId));
-                                            String timeRemainingStr = gameData.get(isWhiteTurn ? "time_white" : "time_black");
-                                            if (timeRemainingStr != null) {
-                                                long timeRemaining = Long.parseLong(timeRemainingStr);
-                                                long nowMillis = System.currentTimeMillis();
-                                                String lastMoveTimeStr = gameData.getOrDefault("last_move_time", String.valueOf(nowMillis));
-                                                long lastMoveTime = Long.parseLong(lastMoveTimeStr);
-                                                long secondsElapsed = (nowMillis - lastMoveTime) / 1000;
-                                                
-                                                log.info("Recovery: Game ID {}, Turn User ID: {}, timeRemaining: {}s, secondsElapsed: {}s",
-                                                        gameId, turnUserId, timeRemaining, secondsElapsed);
-                                                
-                                                if (secondsElapsed >= timeRemaining + 15) {
-                                                    log.warn("Recovery: Game ID {} detected turn timeout for user {}. Forfeiting game...", gameId, turnUserId);
-                                                    webSocketHandler.handleActiveTurnTimeout(gameId, turnUserId);
+                                } else {
+                                    // Both players are ready, meaning the game has started (or should be active)
+                                    String gameId = null;
+                                    if (p.getWhitePlayer() != null) {
+                                        gameId = redisTemplate.opsForValue().get("user:current_game:" + p.getWhitePlayer().getUserId());
+                                    }
+                                    if (gameId == null && p.getBlackPlayer() != null) {
+                                        gameId = redisTemplate.opsForValue().get("user:current_game:" + p.getBlackPlayer().getUserId());
+                                    }
+
+                                    if (gameId != null) {
+                                        Map<String, String> gameData = gameRedisService.getGameData(gameId);
+                                        if (gameData != null && !gameData.isEmpty()) {
+                                            log.info("Recovery: Game ID {} is active for pairing {}. Checking turn timeout...", gameId, p.getPairingId());
+                                            String turnStr = gameData.get("turn");
+                                            if (turnStr != null) {
+                                                int turnUserId = Integer.parseInt(turnStr);
+                                                boolean isWhiteTurn = (p.getWhitePlayer() != null && p.getWhitePlayer().getUserId().equals(turnUserId));
+                                                String timeRemainingStr = gameData.get(isWhiteTurn ? "time_white" : "time_black");
+                                                if (timeRemainingStr != null) {
+                                                    long timeRemaining = Long.parseLong(timeRemainingStr);
+                                                    long nowMillis = System.currentTimeMillis();
+                                                    String lastMoveTimeStr = gameData.getOrDefault("last_move_time", String.valueOf(nowMillis));
+                                                    long lastMoveTime = Long.parseLong(lastMoveTimeStr);
+                                                    long secondsElapsed = (nowMillis - lastMoveTime) / 1000;
+                                                    
+                                                    log.info("Recovery: Game ID {}, Turn User ID: {}, timeRemaining: {}s, secondsElapsed: {}s",
+                                                            gameId, turnUserId, timeRemaining, secondsElapsed);
+                                                    
+                                                    if (secondsElapsed >= timeRemaining + 15) {
+                                                        log.warn("Recovery: Game ID {} detected turn timeout for user {}. Forfeiting game...", gameId, turnUserId);
+                                                        webSocketHandler.handleActiveTurnTimeout(gameId, turnUserId);
+                                                    }
                                                 }
+                                            }
+                                        } else {
+                                            log.warn("Recovery: Game ID {} linked to pairing ID {} has no data in Redis, but pairing result is null.", gameId, p.getPairingId());
+                                            ZonedDateTime startedAt = p.getLobbyStartedAt().withZoneSameInstant(java.time.ZoneOffset.UTC);
+                                            long minutesPassed = Duration.between(startedAt, now).toMinutes();
+                                            if (minutesPassed >= 10) {
+                                                log.warn("Recovery: Game ID {} has been inactive for {} minutes with no Redis data. Forfeiting pairing...", gameId, minutesPassed);
+                                                forfeitPairing(p.getPairingId());
                                             }
                                         }
                                     } else {
-                                        log.warn("Recovery: Game ID {} linked to pairing ID {} has no data in Redis, but pairing result is null.", gameId, p.getPairingId());
+                                        log.warn("Recovery: Pairing ID {} has both players ready but no active gameId found in Redis.", p.getPairingId());
                                         ZonedDateTime startedAt = p.getLobbyStartedAt().withZoneSameInstant(java.time.ZoneOffset.UTC);
                                         long minutesPassed = Duration.between(startedAt, now).toMinutes();
-                                        if (minutesPassed >= 30) {
-                                            log.warn("Recovery: Game ID {} has been inactive for {} minutes with no Redis data. Forfeiting pairing...", gameId, minutesPassed);
+                                        if (minutesPassed >= 10) {
+                                            log.warn("Recovery: Pairing ID {} has been inactive for {} minutes with no active game in Redis. Forfeiting pairing...", p.getPairingId(), minutesPassed);
                                             forfeitPairing(p.getPairingId());
                                         }
                                     }
