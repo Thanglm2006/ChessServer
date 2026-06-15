@@ -276,18 +276,43 @@ def main():
     print(f"Backend Server: {API_BASE}")
     print(f"FastAPI AI Server: {AI_API_BASE}\n")
     
-    # Generate 5 random bots
+    # Try to fetch existing bot participants from tournament standings
+    existing_bots = []
+    try:
+        res = requests.get(f"{API_BASE}/tournaments/{TOURNAMENT_ID}/standings", timeout=5)
+        if res.status_code == 200:
+            standings = res.json()
+            for p in standings:
+                username = p.get("username")
+                if not username:
+                    continue
+                # Match pattern e.g. VanPhong_7433
+                parts = username.split('_')
+                if len(parts) == 2 and parts[1].isdigit() and len(parts[1]) == 4:
+                    rand_id = parts[1]
+                    email = f"{username.lower()}@vku.udn.vn"
+                    password = f"BotPassword#{rand_id}"
+                    existing_bots.append((username, email, password))
+    except Exception as e:
+        print(f"Error fetching existing tournament participants: {e}")
+
     bots = []
-    selected_names = random.sample(BOT_BASE_NAMES, 5)
-    
-    for base_name in selected_names:
-        rand_id = ''.join(random.choices(string.digits, k=4))
-        username = f"{base_name}_{rand_id}"
-        email = f"{username.lower()}@vku.udn.vn"
-        password = f"BotPassword#{rand_id}"
-        
-        bot = ChessBotClient(username, email, password)
-        bots.append(bot)
+    if existing_bots:
+        print(f"Found {len(existing_bots)} existing bots in tournament standings. Reusing them...")
+        for username, email, password in existing_bots:
+            bot = ChessBotClient(username, email, password)
+            bots.append(bot)
+    else:
+        print("No existing bots found in standings. Generating 5 random new bots...")
+        selected_names = random.sample(BOT_BASE_NAMES, 5)
+        for base_name in selected_names:
+            rand_id = ''.join(random.choices(string.digits, k=4))
+            username = f"{base_name}_{rand_id}"
+            email = f"{username.lower()}@vku.udn.vn"
+            password = f"BotPassword#{rand_id}"
+            
+            bot = ChessBotClient(username, email, password)
+            bots.append(bot)
         
     print(f"Starting {len(bots)} bot threads...")
     for bot in bots:
@@ -308,3 +333,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
