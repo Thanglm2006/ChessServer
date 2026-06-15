@@ -294,9 +294,13 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
     private void handleMove(JSONObject json, int userId) throws Exception {
         String gameId = json.getString("gameId");
         String moveStr = json.getString("move");
+        log.info("Received MOVE request: gameId={}, move={}, userId={}", gameId, moveStr, userId);
 
         Map<String, String> data = gameRedisService.getGameData(gameId);
-        if (data == null || data.isEmpty()) return;
+        if (data == null || data.isEmpty()) {
+            log.warn("handleMove: Game data not found in Redis for gameId={}", gameId);
+            return;
+        }
 
         long now = System.currentTimeMillis();
         long lastTime = Long.parseLong(data.getOrDefault("last_move_time", String.valueOf(now)));
@@ -304,8 +308,10 @@ public class ChessWebSocketHandler extends TextWebSocketHandler {
         
         boolean isWhite = (userId == Integer.parseInt(data.get("white")));
         long timeRemaining = Long.parseLong(data.get(isWhite ? "time_white" : "time_black")) - elapsed;
+        log.info("handleMove: isWhite={}, timeRemaining={}s, elapsed={}s", isWhite, timeRemaining, elapsed);
         
         if (timeRemaining <= 0) {
+
             handleEndGame(gameId, userId, "TIMEOUT");
             return;
         }

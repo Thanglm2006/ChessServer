@@ -188,7 +188,6 @@ class ChessBotClient:
         try:
             payload = {
                 "fen": self.current_fen,
-                "player_move": self.last_move.lower() if self.last_move else "",
                 "model": self.model,
                 "difficulty": 3
             }
@@ -215,11 +214,14 @@ class ChessBotClient:
                 "move": ai_move_uci
             }
             if self.ws and getattr(self.ws, 'sock', None) is not None:
+                self.log(f"Sending MOVE payload to WebSocket: {move_payload}")
                 self.ws.send(json.dumps(move_payload))
+                self.log("MOVE payload sent successfully.")
                 self.current_fen = new_fen
                 self.last_move = ai_move_uci
             else:
                 self.log("WebSocket is disconnected. Cannot send move.")
+
 
         except Exception as e:
             self.log(f"Error communicating with AI FastAPI Server: {e}")
