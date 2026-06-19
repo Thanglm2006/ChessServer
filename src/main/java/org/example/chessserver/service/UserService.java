@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -90,5 +91,20 @@ public class UserService {
                 .bronzeMedals(bronze)
                 .tournamentHistory(tournamentHistory)
                 .build();
+    }
+
+    public List<org.example.chessserver.dto.LeaderboardDto> getLeaderboard() {
+        return eloRatingRepository.findAllByOrderByRatingDesc().stream()
+                .map(elo -> org.example.chessserver.dto.LeaderboardDto.builder()
+                        .userId(elo.getUserId())
+                        .username(elo.getUser().getUsername())
+                        .rating(elo.getRating())
+                        .gamesPlayed(elo.getGamesPlayed())
+                        .wins(elo.getWins())
+                        .losses(elo.getLosses())
+                        .draws(elo.getDraws())
+                        .countryCode(elo.getUser().getCountryCode())
+                        .build())
+                .collect(Collectors.toList());
     }
 }

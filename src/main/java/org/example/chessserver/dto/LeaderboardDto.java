@@ -9,9 +9,13 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserSearchDto {
+public class LeaderboardDto {
     private int userId;
     private String username;
     private int rating;
-    private String friendshipStatus;
+    private int gamesPlayed;
+    private int wins;
+    private int losses;
+    private int draws;
+    private String countryCode;
 }

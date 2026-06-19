@@ -5,6 +5,7 @@ import org.example.chessserver.dto.UserProfileDto;
 import org.example.chessserver.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/user")
@@ -27,5 +28,10 @@ public class UserController {
     @GetMapping("/{id}/stats")
     public ResponseEntity<UserProfileDto> getUserStats(@PathVariable int id) {
         return ResponseEntity.ok(userService.getUserProfile(id));
+    }
+
+    @GetMapping("/leaderboard")
+    public ResponseEntity<List<org.example.chessserver.dto.LeaderboardDto>> getLeaderboard() {
+        return ResponseEntity.ok(userService.getLeaderboard());
     }
 }
