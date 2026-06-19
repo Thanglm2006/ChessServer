@@ -22,8 +22,13 @@ public class UserService {
     private final UserRepository userRepository;
     private final EloRatingRepository eloRatingRepository;
     private final TournamentParticipantRepository tournamentParticipantRepository;
+    private final org.example.chessserver.repository.FriendshipRepository friendshipRepository;
 
     public UserProfileDto getUserProfile(int userId) {
+        return getUserProfile(userId, null);
+    }
+
+    public UserProfileDto getUserProfile(int userId, Integer currentUserId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User with ID " + userId + " not found"));
         EloRating elo = eloRatingRepository.findById(userId)
@@ -76,6 +81,27 @@ public class UserService {
                     .build());
         }
 
+        String friendshipStatus = null;
+        if (currentUserId != null) {
+            if (currentUserId.equals(userId)) {
+                friendshipStatus = "OWNER";
+            } else {
+                org.example.chessserver.entity.Friendship friendship = friendshipRepository.findFriendshipBetween(currentUserId, userId);
+                friendshipStatus = "NONE";
+                if (friendship != null) {
+                    if ("ACCEPTED".equals(friendship.getStatus())) {
+                        friendshipStatus = "ACCEPTED";
+                    } else if ("PENDING".equals(friendship.getStatus())) {
+                        if (friendship.getUser1().getUserId() == currentUserId) {
+                            friendshipStatus = "PENDING_SENT";
+                        } else {
+                            friendshipStatus = "PENDING_RECEIVED";
+                        }
+                    }
+                }
+            }
+        }
+
         return UserProfileDto.builder()
                 .userId(user.getUserId())
                 .username(user.getUsername())
@@ -89,6 +115,7 @@ public class UserService {
                 .goldMedals(gold)
                 .silverMedals(silver)
                 .bronzeMedals(bronze)
+                .friendshipStatus(friendshipStatus)
                 .tournamentHistory(tournamentHistory)
                 .build();
     }

@@ -20,14 +20,22 @@ public class UserController {
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String token = authHeader.substring(7);
             int userId = jwtUtil.getClaims(token).get("userId", Integer.class);
-            return ResponseEntity.ok(userService.getUserProfile(userId));
+            return ResponseEntity.ok(userService.getUserProfile(userId, userId));
         }
         throw new RuntimeException("Authorization header is missing or invalid");
     }
 
     @GetMapping("/{id}/stats")
-    public ResponseEntity<UserProfileDto> getUserStats(@PathVariable int id) {
-        return ResponseEntity.ok(userService.getUserProfile(id));
+    public ResponseEntity<UserProfileDto> getUserStats(
+            @PathVariable int id,
+            jakarta.servlet.http.HttpServletRequest request) {
+        String authHeader = request.getHeader(org.springframework.http.HttpHeaders.AUTHORIZATION);
+        Integer currentUserId = null;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            currentUserId = jwtUtil.getClaims(token).get("userId", Integer.class);
+        }
+        return ResponseEntity.ok(userService.getUserProfile(id, currentUserId));
     }
 
     @GetMapping("/leaderboard")
