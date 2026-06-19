@@ -109,7 +109,21 @@ public class MatchmakingService {
         int u1 = Integer.parseInt(parts[3]);
         int u2 = Integer.parseInt(parts[4]);
 
-        if (webSocketHandler.isUserOnline(u1)) joinQueue(u1);
-        if (webSocketHandler.isUserOnline(u2)) joinQueue(u2);
+        try {
+            JSONObject cancelMsg = new JSONObject()
+                    .put("type", "MATCH_CANCELLED")
+                    .put("reason", "MATCH_TIMEOUT");
+
+            if (webSocketHandler.isUserOnline(u1)) {
+                webSocketHandler.sendToUser(u1, cancelMsg.toString());
+                joinQueue(u1);
+            }
+            if (webSocketHandler.isUserOnline(u2)) {
+                webSocketHandler.sendToUser(u2, cancelMsg.toString());
+                joinQueue(u2);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

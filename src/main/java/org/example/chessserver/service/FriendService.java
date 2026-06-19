@@ -2,6 +2,7 @@ package org.example.chessserver.service;
 
 import lombok.RequiredArgsConstructor;
 import org.example.chessserver.dto.FriendDto;
+import org.example.chessserver.dto.UserSearchDto;
 import org.example.chessserver.entity.EloRating;
 import org.example.chessserver.entity.Friendship;
 import org.example.chessserver.entity.User;
@@ -101,6 +102,37 @@ public class FriendService {
             );
         }
     }
+
+    public List<UserSearchDto> searchNewFriends(int userId, String query) {
+        List<User> users = userRepository.searchUsers(query, userId);
+        return users.stream().map(u -> {
+            int targetId = u.getUserId();
+            int rating = eloRatingRepository.findById(targetId).map(EloRating::getRating).orElse(1200);
+            
+            // Check friendship status
+            Friendship friendship = friendshipRepository.findFriendshipBetween(userId, targetId);
+            String status = "NONE";
+            if (friendship != null) {
+                if ("ACCEPTED".equals(friendship.getStatus())) {
+                    status = "ACCEPTED";
+                } else if ("PENDING".equals(friendship.getStatus())) {
+                    if (friendship.getUser1().getUserId() == userId) {
+                        status = "PENDING_SENT";
+                    } else {
+                        status = "PENDING_RECEIVED";
+                    }
+                }
+            }
+            
+            return UserSearchDto.builder()
+                    .userId(targetId)
+                    .username(u.getUsername())
+                    .rating(rating)
+                    .friendshipStatus(status)
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
     @ResponseStatus(HttpStatus.NOT_FOUND)
         public class FriendshipNotFoundException extends RuntimeException {
             public FriendshipNotFoundException(String message) {

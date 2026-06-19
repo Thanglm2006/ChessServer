@@ -2,6 +2,7 @@ package org.example.chessserver.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.example.chessserver.dto.FriendDto;
+import org.example.chessserver.dto.UserSearchDto;
 import org.example.chessserver.service.FriendService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -40,5 +41,12 @@ public class FriendController {
     public ResponseEntity<String> removeFriend(@RequestParam int user1, @RequestParam int user2) {
         friendService.removeFriend(user1, user2);
         return ResponseEntity.ok("Friend removed");
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<UserSearchDto>> searchNewFriends(
+            @RequestParam int userId,
+            @RequestParam String query) {
+        return ResponseEntity.ok(friendService.searchNewFriends(userId, query));
     }
 }
